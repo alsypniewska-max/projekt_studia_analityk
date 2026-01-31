@@ -120,14 +120,18 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Wczytaj dane - Filtry i podgląd")
-        self.setMinimumSize(1400, 800)  # NOWOŚĆ: Duże okno
+        self.setMinimumSize(1400, 800)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)  # NOWOŚĆ: Główny HLayout lewo-prawo
+        main_layout = QHBoxLayout(central_widget)
 
-        # NOWOŚĆ: LEWA KOLUMNA - PRZYCISKI pionowo
-        left_layout = QVBoxLayout()
+        # LEWA KOLUMNA: PRZYCISKI + FILTROWANIE (stała szerokość)
+        left_widget = QWidget()
+        left_widget.setFixedWidth(350)  # NOWOŚĆ: Stały rozmiar lewej strony
+        left_layout = QVBoxLayout(left_widget)
+
+        # PRZYCISKI
         self.btn_wczytaj = QPushButton("Wczytaj dane")
         menu = QMenu(self)
         menu.addAction("Import z CSV", import_csv)
@@ -135,26 +139,20 @@ class MainWindow(QMainWindow):
         self.btn_wczytaj.setMenu(menu)
         left_layout.addWidget(self.btn_wczytaj)
 
-        self.btn_podglad = QPushButton("Podgląd danych")  # TWOJ
-        self.btn_podglad.clicked.connect(self.update_table)  # NOWOŚĆ: connect do self.update_table
+        self.btn_podglad = QPushButton("Podgląd danych")
+        self.btn_podglad.clicked.connect(self.update_table)
         left_layout.addWidget(self.btn_podglad)
-        left_layout.addStretch()
-        main_layout.addLayout(left_layout, stretch=1)  # NOWOŚĆ: Lewy panel wąski
 
-        # NOWOŚĆ: PRAWY PANEL - FILTROWANIE + TABELA
-        right_layout = QVBoxLayout()
-
-        # NOWOŚĆ: Filtrowanie w ScrollArea (widoczne!)
+        # NOWOŚĆ: FILTROWANIE POD PRZYCISKAMI (w ScrollArea)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         filter_widget = QWidget()
         filter_layout = QVBoxLayout(filter_widget)
 
-        # NOWOŚĆ: Widgety filtrów jako self.atrybuty
         group_filter = QGroupBox("Dynamiczne filtry")
         form_layout = QFormLayout(group_filter)
 
-        # NOWOŚĆ: Filtr Wiek
+        # Filtr Wiek
         h_wiek = QHBoxLayout()
         self.chk_wiek = QCheckBox("Filtr wieku")
         self.spin_wiek_min = QSpinBox();
@@ -170,7 +168,7 @@ class MainWindow(QMainWindow):
         h_wiek.addWidget(self.spin_wiek_max)
         form_layout.addRow(h_wiek)
 
-        # NOWOŚĆ: Filtr Płeć
+        # Filtr Płeć
         h_plc = QHBoxLayout()
         self.chk_plc = QCheckBox("Filtr płci")
         self.combo_plc = QComboBox()
@@ -179,7 +177,7 @@ class MainWindow(QMainWindow):
         h_plc.addWidget(self.combo_plc)
         form_layout.addRow(h_plc)
 
-        # NOWOŚĆ: Filtr Ciśnienie
+        # Filtr Ciśnienie
         h_cisn = QHBoxLayout()
         self.chk_cisn = QCheckBox("Filtr ciśnienia")
         self.spin_skur_min = QSpinBox();
@@ -195,26 +193,27 @@ class MainWindow(QMainWindow):
         self.spin_rozk_max.setRange(30, 150);
         self.spin_rozk_max.setValue(100)
         h_cisn.addWidget(self.chk_cisn)
-        h_cisn.addWidget(QLabel("Skurczowe od/do:"))
+        h_cisn.addWidget(QLabel("Skurcz. od/do:"))
         h_cisn.addWidget(self.spin_skur_min);
         h_cisn.addWidget(self.spin_skur_max)
-        h_cisn.addWidget(QLabel("Rozkurczowe od/do:"))
+        h_cisn.addWidget(QLabel("Rozk. od/do:"))
         h_cisn.addWidget(self.spin_rozk_min);
         h_cisn.addWidget(self.spin_rozk_max)
         form_layout.addRow(h_cisn)
 
         filter_layout.addWidget(group_filter)
         scroll.setWidget(filter_widget)
-        right_layout.addWidget(QLabel("FILTROWANIE (przewiń ↓):"))  # NOWOŚĆ: Wskazówka
-        right_layout.addWidget(scroll)
+        left_layout.addWidget(scroll)  # FILTROWANIE pod przyciskami!
 
-        # NOWOŚĆ: Tabela w głównym oknie (zamiast dialog)
+        main_layout.addWidget(left_widget, stretch=0)  # Lewa stała szerokość
+
+        # NOWOŚĆ: PRAWY - TYLKO TABELA (pełna szerokość)
         self.table = QTableWidget()
         self.table.setRowCount(0)
         self.table.setColumnCount(0)
-        right_layout.addWidget(self.table)
+        main_layout.addWidget(self.table, stretch=1)
 
-        main_layout.addLayout(right_layout, stretch=4)
+    # update_table() pozostaje bez zmian
 
     # NOWOŚĆ: Metoda aktualizująca tabelę w głównym oknie
     def update_table(self):
