@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout,
 
 
 def wczytaj_dane():
-
+    tabela = pd.read_csv("pomiary_cisnienia.csv")
 
     pass  # Placeholder - dodaj tu swoją implementację
 
