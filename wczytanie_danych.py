@@ -83,7 +83,6 @@ def zastosuj_filtry(df, widgets):
 
     return filtered_df
 
-
 def podglad_danych():
     if current_df is None:
         print("Najpierw wczytaj plik")
@@ -211,8 +210,13 @@ class MainWindow(QMainWindow):
         for col in current_df.columns:
             chk = QCheckBox(str(col))
             chk.setChecked(False)
+            chk.setMaximumWidth(140)
+            chk.setMinimumWidth(140)
+            chk.setToolTip(str(col))
 
             row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(4)
             row.addWidget(chk)
 
             if pd.api.types.is_numeric_dtype(current_df[col]):
@@ -224,23 +228,28 @@ class MainWindow(QMainWindow):
 
                 spin_min = QSpinBox()
                 spin_max = QSpinBox()
-                spin_min.setMaximumWidth(70)
-                spin_max.setMaximumWidth(70)
+                spin_min.setMaximumWidth(60)
+                spin_max.setMaximumWidth(60)
 
                 spin_min.setRange(int(vmin) - 1, int(vmax) + 1)
                 spin_max.setRange(int(vmin) - 1, int(vmax) + 1)
                 spin_min.setValue(int(vmin))
                 spin_max.setValue(int(vmax))
 
-                row.addWidget(QLabel("min"))
+                row.addWidget(QLabel("od"))
                 row.addWidget(spin_min)
-                row.addWidget(QLabel("max"))
+                row.addWidget(QLabel("do"))
                 row.addWidget(spin_max)
 
                 self.filter_widgets[col] = {"chk": chk, "min": spin_min, "max": spin_max}
             else:
                 combo = QComboBox()
                 combo.setMinimumWidth(140)
+                combo.setMaximumWidth(160)
+                combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+                combo.setMinimumContentsLength(8)
+                combo.setToolTip(str(col))
+
                 values = (
                     current_df[col]
                     .dropna()
