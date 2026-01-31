@@ -119,12 +119,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
 
-        # LEWA 350px: przyciski + filtry
+        # LEWA KOLUMNA 350px
         left_widget = QWidget()
-        left_widget.setFixedWidth(350)  # DOKŁADNIE 350px!
+        left_widget.setFixedWidth(350)
         left_layout = QVBoxLayout(left_widget)
 
-        # Przyciski
+        # Przyciski górne
         self.btn_wczytaj = QPushButton("Wczytaj dane")
         menu = QMenu(self)
         menu.addAction("Import z CSV", import_csv)
@@ -136,10 +136,10 @@ class MainWindow(QMainWindow):
         self.btn_podglad.clicked.connect(self.update_table)
         left_layout.addWidget(self.btn_podglad)
 
-        # KOMP AKT FILTROWANIE
+        # Filtrowanie kompaktowe
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setMaximumHeight(250)
+        scroll.setMaximumHeight(220)
         filter_widget = QWidget()
         filter_layout = QVBoxLayout(filter_widget)
 
@@ -183,7 +183,7 @@ class MainWindow(QMainWindow):
         self.spin_skur_max.setRange(50, 250);
         self.spin_skur_max.setMaximumWidth(45)
         h_cisn1.addWidget(self.chk_cisn);
-        h_cisn1.addWidget(QLabel("skurcz"));
+        h_cisn1.addWidget(QLabel("sk"));
         h_cisn1.addWidget(self.spin_skur_min)
         h_cisn1.addWidget(QLabel("-"));
         h_cisn1.addWidget(self.spin_skur_max)
@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
         self.spin_rozk_max.setRange(30, 150);
         self.spin_rozk_max.setMaximumWidth(45)
         h_cisn2.addStretch();
-        h_cisn2.addWidget(QLabel("rozk"));
+        h_cisn2.addWidget(QLabel("rk"));
         h_cisn2.addWidget(self.spin_rozk_min)
         h_cisn2.addWidget(QLabel("-"));
         h_cisn2.addWidget(self.spin_rozk_max)
@@ -207,10 +207,18 @@ class MainWindow(QMainWindow):
         scroll.setWidget(filter_widget)
         left_layout.addWidget(scroll)
 
+        # NOWOŚĆ: Przycisk Filtruj i wyświetl (bez emotek)
+        self.btn_filtruj = QPushButton("Filtruj i wyświetl")
+        self.btn_filtruj.clicked.connect(self.update_table)
+        self.btn_filtruj.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
+        left_layout.addWidget(self.btn_filtruj)
+
+        left_layout.addStretch()
         main_layout.addWidget(left_widget, stretch=0)
 
         # PRAWY: Tabela
         self.table = QTableWidget()
+        self.table.setAlternatingRowColors(True)
         main_layout.addWidget(self.table, stretch=1)
 
     def update_table(self):
@@ -226,7 +234,7 @@ class MainWindow(QMainWindow):
             display_df = zastosuj_filtry(current_df, self)  # Używa poprawionej wersji
             print(f"✅ Filtry OK: {len(current_df)} → {len(display_df)} wierszy")
         except Exception as e:
-            print(f"⚠️ Błąd filtra: {e} - pokazuję surowe dane")
+            print(f"Błąd filtra: {e} - pokazuję surowe dane")
             display_df = current_df
 
         # Wypełnij tabelę
