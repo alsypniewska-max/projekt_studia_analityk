@@ -174,16 +174,21 @@ class MainWindow(QMainWindow):
         )
         left_layout.addWidget(self.btn_filtruj)
 
-        # NOWE: Przycisk Statystyka (lewa strona)
+        # Przycisk Statystyka (toggle: on/off)
         self.btn_statystyka = QPushButton("Statystyka")
-        self.btn_statystyka.clicked.connect(self.toggle_stats_bar)
+        self.btn_statystyka.setCheckable(True)
+        self.btn_statystyka.toggled.connect(self.toggle_stats_mode)
+        self.btn_statystyka.setStyleSheet("""
+            QPushButton { padding: 6px; }
+            QPushButton:checked { background-color: #2196F3; color: white; font-weight: bold; }
+        """)
         left_layout.addWidget(self.btn_statystyka)
 
         # WAŻNE: dokończenie layoutu lewej kolumny
         left_layout.addStretch()
         main_layout.addWidget(left_widget, stretch=0)
 
-        # PRAWY: Kontener (pasek statystyk nad tabelą)
+        # PRAWY: Kontener (pasek statystyk nad tabelą + stos widoków)
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -195,15 +200,10 @@ class MainWindow(QMainWindow):
         stats_bar_layout.setContentsMargins(0, 0, 0, 0)
         stats_bar_layout.setSpacing(4)
 
-        # Rząd 1: wybór statystyk
+        # Rząd 1: akcje + wybór statystyk
         row1 = QHBoxLayout()
         row1.setContentsMargins(0, 0, 0, 0)
         row1.setSpacing(8)
-
-        self.chk_mean = QCheckBox("Średnia")
-        self.chk_median = QCheckBox("Mediana")
-        self.chk_min = QCheckBox("Minimum")
-        self.chk_max = QCheckBox("Maximum")
 
         self.btn_analizuj = QPushButton("Analizuj")
         self.btn_analizuj.clicked.connect(self.run_analysis)
@@ -213,6 +213,10 @@ class MainWindow(QMainWindow):
         self.btn_dane.clicked.connect(lambda: self.view_stack.setCurrentIndex(0))
         row1.addWidget(self.btn_dane)
 
+        self.chk_mean = QCheckBox("Średnia")
+        self.chk_median = QCheckBox("Mediana")
+        self.chk_min = QCheckBox("Minimum")
+        self.chk_max = QCheckBox("Maximum")
         for w in (self.chk_mean, self.chk_median, self.chk_min, self.chk_max):
             w.stateChanged.connect(self.update_stats_view)
 
@@ -251,18 +255,7 @@ class MainWindow(QMainWindow):
 
         self.stats_bar.setVisible(False)
 
-        # Tabela wyników statystyk (na start ukryta)
-        self.stats_table = QTableWidget()
-        self.stats_table.setVisible(False)
-
-        # Dynamiczne checkboxy kategorii
-        self.stats_cat_widgets = {}
-
-        # Główna tabela danych
-        self.table = QTableWidget()
-        self.table.setAlternatingRowColors(True)
-
-        right_layout.addWidget(self.stats_bar)
+        # Tabele + stos widoków
         self.table = QTableWidget()
         self.table.setAlternatingRowColors(True)
 
@@ -271,7 +264,10 @@ class MainWindow(QMainWindow):
         self.view_stack = QStackedWidget()
         self.view_stack.addWidget(self.table)  # index 0: dane
         self.view_stack.addWidget(self.stats_table)  # index 1: statystyka
-        self.view_stack.setCurrentIndex(0)  # start: dane [web:207]
+        self.view_stack.setCurrentIndex(0)
+
+        # Dynamiczne checkboxy kategorii
+        self.stats_cat_widgets = {}
 
         right_layout.addWidget(self.stats_bar)
         right_layout.addWidget(self.view_stack, stretch=1)
@@ -397,6 +393,9 @@ class MainWindow(QMainWindow):
             self.refresh_stats_controls()
             self.update_stats_view()
 
+        if self.btn_statystyka.isChecked():
+            self.refresh_stats_controls()
+
     def clear_layout(self, layout):
         while layout.count():
             item = layout.takeAt(0)
@@ -502,6 +501,16 @@ class MainWindow(QMainWindow):
 
         # Przełącz widok na tabelę statystyk
         self.view_stack.setCurrentIndex(1)  # pokaż statystykę [web:207]
+
+    def toggle_stats_mode(self, active: bool):
+        # aktywny tryb: pokaż pasek, odśwież kontrolki, przełącz widok na statystyki
+        self.stats_bar.setVisible(active)  # show/hide przez setVisible [web:161]
+        if active:
+            self.refresh_stats_controls()
+            # nie licz od razu; dopiero po kliknięciu "Analizuj"
+            self.view_stack.setCurrentIndex(1)  # statystyka [web:207]
+        else:
+            self.view_stack.setCurrentIndex(0)  # dane [web:207]
 
 
 if __name__ == "__main__":
