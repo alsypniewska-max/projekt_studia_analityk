@@ -1,8 +1,12 @@
 import sys
 import re
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QMenu, QFileDialog,
-                             QTableWidget, QTableWidgetItem, QLabel, QSpinBox, QCheckBox, QDoubleSpinBox,
-                             QGroupBox, QFormLayout, QScrollArea, QComboBox)
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
+    QPushButton, QMenu, QScrollArea, QTableWidget, QTableWidgetItem,
+    QLabel, QCheckBox, QComboBox, QSpinBox, QStackedWidget,
+    QFileDialog
+)
+
 
 from PyQt6.QtCore import Qt
 import pandas as pd
@@ -170,18 +174,114 @@ class MainWindow(QMainWindow):
         )
         left_layout.addWidget(self.btn_filtruj)
 
+        # NOWE: Przycisk Statystyka (lewa strona)
+        self.btn_statystyka = QPushButton("Statystyka")
+        self.btn_statystyka.clicked.connect(self.toggle_stats_bar)
+        left_layout.addWidget(self.btn_statystyka)
+
         # WAŻNE: dokończenie layoutu lewej kolumny
         left_layout.addStretch()
         main_layout.addWidget(left_widget, stretch=0)
 
-        # PRAWY: Tabela
+        # PRAWY: Kontener (pasek statystyk nad tabelą)
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(6)
+
+        # Pasek statystyk (na start ukryty)
+        self.stats_bar = QWidget()
+        stats_bar_layout = QVBoxLayout(self.stats_bar)
+        stats_bar_layout.setContentsMargins(0, 0, 0, 0)
+        stats_bar_layout.setSpacing(4)
+
+        # Rząd 1: wybór statystyk
+        row1 = QHBoxLayout()
+        row1.setContentsMargins(0, 0, 0, 0)
+        row1.setSpacing(8)
+
+        self.chk_mean = QCheckBox("Średnia")
+        self.chk_median = QCheckBox("Mediana")
+        self.chk_min = QCheckBox("Minimum")
+        self.chk_max = QCheckBox("Maximum")
+
+        self.btn_analizuj = QPushButton("Analizuj")
+        self.btn_analizuj.clicked.connect(self.run_analysis)
+        row1.addWidget(self.btn_analizuj)
+
+        self.btn_dane = QPushButton("Dane")
+        self.btn_dane.clicked.connect(lambda: self.view_stack.setCurrentIndex(0))
+        row1.addWidget(self.btn_dane)
+
+        for w in (self.chk_mean, self.chk_median, self.chk_min, self.chk_max):
+            w.stateChanged.connect(self.update_stats_view)
+
+        row1.addWidget(self.chk_mean)
+        row1.addWidget(self.chk_median)
+        row1.addWidget(self.chk_min)
+        row1.addWidget(self.chk_max)
+        row1.addStretch(1)
+        stats_bar_layout.addLayout(row1)
+
+        # Rząd 2: dynamiczne checkboxy kategorii + wybór kolumny liczbowej
+        row2 = QHBoxLayout()
+        row2.setContentsMargins(0, 0, 0, 0)
+        row2.setSpacing(8)
+
+        row2.addWidget(QLabel("Grupuj po:"))
+
+        self.stats_scroll = QScrollArea()
+        self.stats_scroll.setWidgetResizable(True)
+        self.stats_scroll.setFixedHeight(55)
+
+        self.stats_cat_widget = QWidget()
+        self.stats_scroll_layout = QHBoxLayout(self.stats_cat_widget)
+        self.stats_scroll_layout.setContentsMargins(0, 0, 0, 0)
+        self.stats_scroll_layout.setSpacing(6)
+        self.stats_scroll.setWidget(self.stats_cat_widget)
+
+        row2.addWidget(self.stats_scroll, stretch=1)
+
+        row2.addWidget(QLabel("Wartość:"))
+        self.cmb_value = QComboBox()
+        self.cmb_value.currentIndexChanged.connect(self.update_stats_view)
+        row2.addWidget(self.cmb_value)
+
+        stats_bar_layout.addLayout(row2)
+
+        self.stats_bar.setVisible(False)
+
+        # Tabela wyników statystyk (na start ukryta)
+        self.stats_table = QTableWidget()
+        self.stats_table.setVisible(False)
+
+        # Dynamiczne checkboxy kategorii
+        self.stats_cat_widgets = {}
+
+        # Główna tabela danych
         self.table = QTableWidget()
         self.table.setAlternatingRowColors(True)
-        main_layout.addWidget(self.table, stretch=1)
+
+        right_layout.addWidget(self.stats_bar)
+        self.table = QTableWidget()
+        self.table.setAlternatingRowColors(True)
+
+        self.stats_table = QTableWidget()
+
+        self.view_stack = QStackedWidget()
+        self.view_stack.addWidget(self.table)  # index 0: dane
+        self.view_stack.addWidget(self.stats_table)  # index 1: statystyka
+        self.view_stack.setCurrentIndex(0)  # start: dane [web:207]
+
+        right_layout.addWidget(self.stats_bar)
+        right_layout.addWidget(self.view_stack, stretch=1)
+
+        main_layout.addWidget(right_widget, stretch=1)
 
     def import_csv_and_refresh(self):
         import_csv()
         self.create_dynamic_filters()
+        self.refresh_stats_controls()
         self.update_table()
 
     def create_dynamic_filters(self):
@@ -292,6 +392,117 @@ class MainWindow(QMainWindow):
 
         self.table.resizeColumnsToContents()
         self.table.setAlternatingRowColors(True)
+
+        if self.stats_bar.isVisible():
+            self.refresh_stats_controls()
+            self.update_stats_view()
+
+    def clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            l = item.layout()
+            if l is not None:
+                self.clear_layout(l)
+                l.deleteLater()
+            if w is not None:
+                w.deleteLater()
+
+    def toggle_stats_bar(self):
+        visible = not self.stats_bar.isVisible()
+        self.stats_bar.setVisible(visible)  # pokaż/ukryj pasek opcji [web:212]
+        if visible:
+            self.refresh_stats_controls()
+
+    def refresh_stats_controls(self):
+        global current_df
+        if current_df is None:
+            self.cmb_value.clear()
+            self.clear_layout(self.stats_scroll_layout)
+            self.stats_cat_widgets = {}
+            return
+
+        # Odśwież listę kolumn liczbowych do obliczeń
+        self.cmb_value.blockSignals(True)
+        self.cmb_value.clear()
+        num_cols = [c for c in current_df.columns if pd.api.types.is_numeric_dtype(current_df[c])]
+        self.cmb_value.addItems([str(c) for c in num_cols])
+        self.cmb_value.blockSignals(False)
+
+        # Odśwież checkboxy kategorii (kolumny do grupowania)
+        self.clear_layout(self.stats_scroll_layout)
+        self.stats_cat_widgets = {}
+
+        cat_cols = [c for c in current_df.columns if not pd.api.types.is_numeric_dtype(current_df[c])]
+        for col in cat_cols:
+            chk = QCheckBox(str(col))
+            chk.setChecked(False)
+            chk.stateChanged.connect(self.update_stats_view)
+            self.stats_scroll_layout.addWidget(chk)
+            self.stats_cat_widgets[col] = chk
+
+        self.stats_scroll_layout.addStretch(1)
+
+    def get_selected_group_col(self):
+        selected = [col for col, chk in self.stats_cat_widgets.items() if chk.isChecked()]
+        return selected[0] if selected else None
+
+    def render_df_to_table(self, df, table):
+        table.setRowCount(len(df))
+        table.setColumnCount(len(df.columns))
+        table.setHorizontalHeaderLabels([str(c) for c in df.columns])
+        for r in range(len(df)):
+            for c in range(len(df.columns)):
+                table.setItem(r, c, QTableWidgetItem(str(df.iat[r, c])))
+        table.resizeColumnsToContents()
+
+    def update_stats_view(self):
+        global current_df
+        if current_df is None:
+            return
+
+        group_col = self.get_selected_group_col()
+        value_col = self.cmb_value.currentText()
+        if not group_col or not value_col:
+            self.stats_table.setRowCount(0)
+            self.stats_table.setColumnCount(0)
+            return
+
+        aggs = []
+        if self.chk_mean.isChecked(): aggs.append("mean")
+        if self.chk_median.isChecked(): aggs.append("median")
+        if self.chk_min.isChecked(): aggs.append("min")
+        if self.chk_max.isChecked(): aggs.append("max")
+        if not aggs:
+            self.stats_table.setRowCount(0)
+            self.stats_table.setColumnCount(0)
+            return
+
+        # 1) bierzemy dane przefiltrowane (to co w tabeli) [web:130]
+        try:
+            display_df = zastosuj_filtry(current_df, self).copy()
+        except Exception:
+            display_df = current_df.copy()
+
+        # 2) groupby + agg na przefiltrowanych danych, reset_index żeby mieć normalny DF [web:141]
+        df = display_df[[group_col, value_col]].copy()
+        df[value_col] = pd.to_numeric(df[value_col], errors="coerce")
+
+        result = (
+            df.groupby(group_col, dropna=False)[value_col]
+            .agg(aggs)
+            .reset_index()
+        )
+
+        self.render_df_to_table(result, self.stats_table)
+
+    def run_analysis(self):
+        # Najpierw policz wynik statystyk (na przefiltrowanych danych)
+        self.update_stats_view()
+
+        # Przełącz widok na tabelę statystyk
+        self.view_stack.setCurrentIndex(1)  # pokaż statystykę [web:207]
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
