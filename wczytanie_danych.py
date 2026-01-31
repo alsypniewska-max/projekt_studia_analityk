@@ -137,11 +137,9 @@ class MainWindow(QMainWindow):
         self.btn_wczytaj = QPushButton("Wczytaj dane")
         menu = QMenu(self)
 
-        # NOWOŚĆ: Import CSV przez metodę okna (odświeża filtry i tabelę)
         action_csv = menu.addAction("Import z CSV")
         action_csv.triggered.connect(self.import_csv_and_refresh)
 
-        # SQL zostaje jak było
         action_sql = menu.addAction("Import z bazy SQL")
         action_sql.triggered.connect(import_sql)
 
@@ -152,25 +150,35 @@ class MainWindow(QMainWindow):
         self.btn_podglad.clicked.connect(self.update_table)
         left_layout.addWidget(self.btn_podglad)
 
-        # NOWOŚĆ/POPRAWKA: Jeden ScrollArea dla dynamicznych filtrów (bez duplikowania)
+        # ScrollArea na dynamiczne filtry
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setMaximumHeight(300)
 
         filter_widget = QWidget()
-        self.scroll_layout = QVBoxLayout(filter_widget)  # tu będą dodawane wiersze filtrów
+        self.scroll_layout = QVBoxLayout(filter_widget)
         scroll.setWidget(filter_widget)
         left_layout.addWidget(scroll)
 
-        # NOWOŚĆ: miejsce na kontrolki filtrów
+        # Miejsce na kontrolki filtrów
         self.filter_widgets = {}
 
         # Przycisk Filtruj i wyświetl
         self.btn_filtruj = QPushButton("Filtruj i wyświetl")
         self.btn_filtruj.clicked.connect(self.update_table)
         self.btn_filtruj.setStyleSheet(
-    "background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
+            "background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;"
+        )
         left_layout.addWidget(self.btn_filtruj)
+
+        # WAŻNE: dokończenie layoutu lewej kolumny
+        left_layout.addStretch()
+        main_layout.addWidget(left_widget, stretch=0)
+
+        # PRAWY: Tabela
+        self.table = QTableWidget()
+        self.table.setAlternatingRowColors(True)
+        main_layout.addWidget(self.table, stretch=1)
 
     def import_csv_and_refresh(self):
         import_csv()
@@ -178,12 +186,11 @@ class MainWindow(QMainWindow):
         self.update_table()
 
     def create_dynamic_filters(self):
-        """Tworzy kontrolki filtrowania na podstawie kolumn current_df."""
         global current_df
         if current_df is None:
             return
 
-        # Wyczyść stare filtry
+        # Wyczyść stare filtry (usuń layouty i widgety)
         while self.scroll_layout.count():
             item = self.scroll_layout.takeAt(0)
             layout = item.layout()
@@ -199,41 +206,56 @@ class MainWindow(QMainWindow):
             if widget is not None:
                 widget.deleteLater()
 
-        # Słownik kontrolek filtrów
-        self.filter_widgets = {}  # {col: {'chk': QCheckBox, ...}}
+        self.filter_widgets = {}
 
         for col in current_df.columns:
             chk = QCheckBox(str(col))
             chk.setChecked(False)
 
-            layout_col = QHBoxLayout()
-            layout_col.addWidget(chk)
+            row = QHBoxLayout()
+            row.addWidget(chk)
 
-            # Liczby: min/max
             if pd.api.types.is_numeric_dtype(current_df[col]):
-                col_series = pd.to_numeric(current_df[col], errors="coerce")
-                vmin = col_series.min()
-                vmax = col_series.max()
-
-                # sensowne defaulty gdy kolumna ma same NaN
+                s = pd.to_numeric(current_df[col], errors="coerce")
+                vmin = s.min()
+                vmax = s.max()
                 if pd.isna(vmin): vmin = 0
                 if pd.isna(vmax): vmax = 0
 
                 spin_min = QSpinBox()
                 spin_max = QSpinBox()
-
                 spin_min.setMaximumWidth(70)
                 spin_max.setMaximumWidth(70)
 
                 spin_min.setRange(int(vmin) - 1, int(vmax) + 1)
                 spin_max.setRange(int(vmin) - 1, int(vmax) + 1)
-
                 spin_min.setValue(int(vmin))
                 spin_max.setValue(int(vmax))
 
-                layout_col.addWidget(QLabel("min"))
-                layout_col.addWidget(spin_min)
-                layout_col
+                row.addWidget(QLabel("min"))
+                row.addWidget(spin_min)
+                row.addWidget(QLabel("max"))
+                row.addWidget(spin_max)
+
+                self.filter_widgets[col] = {"chk": chk, "min": spin_min, "max": spin_max}
+            else:
+                combo = QComboBox()
+                combo.setMinimumWidth(140)
+                values = (
+                    current_df[col]
+                    .dropna()
+                    .astype(str)
+                    .value_counts()
+                    .index[:20]
+                    .tolist()
+                )
+                combo.addItem("")
+                combo.addItems(values)
+
+                row.addWidget(combo)
+                self.filter_widgets[col] = {"chk": chk, "combo": combo}
+
+            self.scroll_layout.addLayout(row)
 
     def update_table(self):
         global current_df
@@ -245,29 +267,23 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            display_df = zastosuj_filtry(current_df, self)  # Używa poprawionej wersji
-            print(f"✅ Filtry OK: {len(current_df)} → {len(display_df)} wierszy")
+            display_df = zastosuj_filtry(current_df, self)
         except Exception as e:
             print(f"Błąd filtra: {e} - pokazuję surowe dane")
             display_df = current_df
 
-        # Wypełnij tabelę
         nrows = min(50, len(display_df))
         self.table.setRowCount(nrows)
         self.table.setColumnCount(len(display_df.columns))
         self.table.setHorizontalHeaderLabels(display_df.columns.tolist())
 
-        for row in range(nrows):
-            for col in range(len(display_df.columns)):
-                value = str(display_df.iloc[row, col])
-                item = QTableWidgetItem(value)
-                self.table.setItem(row, col, item)
+        for r in range(nrows):
+            for c in range(len(display_df.columns)):
+                self.table.setItem(r, c, QTableWidgetItem(str(display_df.iloc[r, c])))
 
         self.table.resizeColumnsToContents()
         self.table.setAlternatingRowColors(True)
-        print(f"📊 Pokazano {nrows}/{len(display_df)} wierszy, kolumny: {list(display_df.columns)}")
 
-    # Uruchomienie aplikacji
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
