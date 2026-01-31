@@ -49,27 +49,28 @@ def import_sql():
 def zastosuj_filtry(df, widgets):
     filtered_df = df.copy()
 
+    # Filtr wieku - BEZPIECZNIE
     if widgets.chk_wiek.isChecked():
-        filtered_df = filtered_df[(filtered_df.get('Wiek', pd.Series([0])) >= widgets.spin_wiek_min.value()) &
-                                  (filtered_df.get('Wiek', pd.Series([0])) <= widgets.spin_wiek_max.value())]
+        col_wiek = df.get('Wiek', pd.Series(0.0, index=df.index))  # PRAWIDŁOWY INDEX!
+        filtered_df = filtered_df[(col_wiek >= widgets.spin_wiek_min.value()) &
+                                  (col_wiek <= widgets.spin_wiek_max.value())]
 
+    # Filtr płeć - BEZPIECZNIE
     if widgets.chk_plc.isChecked() and widgets.combo_plc.currentText():
-        filtered_df = filtered_df[filtered_df.get('Płeć', pd.Series([""])) == widgets.combo_plc.currentText()]
+        col_plc = df.get('Płeć', pd.Series("", index=df.index))  # PRAWIDŁOWY INDEX!
+        filtered_df = filtered_df[col_plc == widgets.combo_plc.currentText()]
 
+    # Filtr ciśnienie - BEZPIECZNIE
     if widgets.chk_cisn.isChecked():
-        if 'Ciśnienie' in df.columns:
-            df[['skur', 'rozk']] = df['Ciśnienie'].apply(parse_pressure).apply(pd.Series)
-            filtered_df = filtered_df[
-                (filtered_df['skur'].fillna(0) >= widgets.spin_skur_min.value()) &
-                (filtered_df['skur'].fillna(999) <= widgets.spin_skur_max.value()) &
-                (filtered_df['rozk'].fillna(0) >= widgets.spin_rozk_min.value()) &
-                (filtered_df['rozk'].fillna(999) <= widgets.spin_rozk_max.value())
-                ]
-        else:
-            filtered_df = filtered_df[
-                (filtered_df.get('Ciśnienie skurczowe', pd.Series([0])) >= widgets.spin_skur_min.value()) &
-                (filtered_df.get('Ciśnienie rozkurczowe', pd.Series([0])) <= widgets.spin_rozk_max.value())
-                ]
+        col_skur = df.get('Ciśnienie skurczowe', pd.Series(0.0, index=df.index))
+        col_rozk = df.get('Ciśnienie rozkurczowe', pd.Series(0.0, index=df.index))
+        filtered_df = filtered_df[
+            (col_skur >= widgets.spin_skur_min.value()) &
+            (col_skur <= widgets.spin_skur_max.value()) &
+            (col_rozk >= widgets.spin_rozk_min.value()) &
+            (col_rozk <= widgets.spin_rozk_max.value())
+            ]
+
     return filtered_df
 
 
@@ -212,7 +213,6 @@ class MainWindow(QMainWindow):
         self.table = QTableWidget()
         main_layout.addWidget(self.table, stretch=1)
 
-
     def update_table(self):
         global current_df
         if current_df is None:
@@ -222,22 +222,28 @@ class MainWindow(QMainWindow):
             self.table.setItem(0, 0, QTableWidgetItem("Najpierw wczytaj CSV"))
             return
 
-        # NOWOŚĆ: Użyj self.widgety w filtrach
-        display_df = zastosuj_filtry(current_df, self)
+        try:
+            display_df = zastosuj_filtry(current_df, self)  # Używa poprawionej wersji
+            print(f"✅ Filtry OK: {len(current_df)} → {len(display_df)} wierszy")
+        except Exception as e:
+            print(f"⚠️ Błąd filtra: {e} - pokazuję surowe dane")
+            display_df = current_df
 
-        nrows = min(50, len(display_df))  # TWOJA logika
+        # Wypełnij tabelę
+        nrows = min(50, len(display_df))
         self.table.setRowCount(nrows)
         self.table.setColumnCount(len(display_df.columns))
         self.table.setHorizontalHeaderLabels(display_df.columns.tolist())
 
         for row in range(nrows):
             for col in range(len(display_df.columns)):
-                item = QTableWidgetItem(str(display_df.iloc[row, col]))
+                value = str(display_df.iloc[row, col])
+                item = QTableWidgetItem(value)
                 self.table.setItem(row, col, item)
 
         self.table.resizeColumnsToContents()
         self.table.setAlternatingRowColors(True)
-        print(f"📊 Pokazano {nrows}/{len(display_df)} wierszy")
+        print(f"📊 Pokazano {nrows}/{len(display_df)} wierszy, kolumny: {list(display_df.columns)}")
 
     # Uruchomienie aplikacji
 if __name__ == "__main__":
