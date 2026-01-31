@@ -1,8 +1,9 @@
 import sys
 import re
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QMenu, QFileDialog,
-                             QTableWidget, QTableWidgetItem, QDialog, QLabel, QSpinBox, QCheckBox, QDoubleSpinBox,
+                             QTableWidget, QTableWidgetItem, QLabel, QSpinBox, QCheckBox, QDoubleSpinBox,
                              QGroupBox, QFormLayout, QScrollArea, QComboBox)
+
 from PyQt6.QtCore import Qt
 import pandas as pd
 import numpy as np
@@ -45,25 +46,19 @@ def import_sql():
     pass  # Dodaj tu kod importu SQL
 
 
-def zastosuj_filtry(df, widgets):  # NOWOŚĆ: parametr widgets=self
+def zastosuj_filtry(df, widgets):
     filtered_df = df.copy()
 
-    # Filtr wieku
     if widgets.chk_wiek.isChecked():
-        min_wiek = widgets.spin_wiek_min.value()
-        max_wiek = widgets.spin_wiek_max.value()
-        filtered_df = filtered_df[(filtered_df.get('Wiek', pd.Series([0])) >= min_wiek) &
-                                  (filtered_df.get('Wiek', pd.Series([0])) <= max_wiek)]
+        filtered_df = filtered_df[(filtered_df.get('Wiek', pd.Series([0])) >= widgets.spin_wiek_min.value()) &
+                                  (filtered_df.get('Wiek', pd.Series([0])) <= widgets.spin_wiek_max.value())]
 
-    # Filtr płeć
     if widgets.chk_plc.isChecked() and widgets.combo_plc.currentText():
         filtered_df = filtered_df[filtered_df.get('Płeć', pd.Series([""])) == widgets.combo_plc.currentText()]
 
-    # Filtr ciśnienie + TWOJA parse_pressure
     if widgets.chk_cisn.isChecked():
-        # Użyj parse_pressure na kolumnie ciśnienia jeśli masz 'Ciśnienie' jako string '100/60'
         if 'Ciśnienie' in df.columns:
-            df['skur'], df['rozk'] = zip(*df['Ciśnienie'].apply(parse_pressure))
+            df[['skur', 'rozk']] = df['Ciśnienie'].apply(parse_pressure).apply(pd.Series)
             filtered_df = filtered_df[
                 (filtered_df['skur'].fillna(0) >= widgets.spin_skur_min.value()) &
                 (filtered_df['skur'].fillna(999) <= widgets.spin_skur_max.value()) &
@@ -71,11 +66,8 @@ def zastosuj_filtry(df, widgets):  # NOWOŚĆ: parametr widgets=self
                 (filtered_df['rozk'].fillna(999) <= widgets.spin_rozk_max.value())
                 ]
         else:
-            # Zakładając osobne kolumny
             filtered_df = filtered_df[
                 (filtered_df.get('Ciśnienie skurczowe', pd.Series([0])) >= widgets.spin_skur_min.value()) &
-                (filtered_df.get('Ciśnienie skurczowe', pd.Series([0])) <= widgets.spin_skur_max.value()) &
-                (filtered_df.get('Ciśnienie rozkurczowe', pd.Series([0])) >= widgets.spin_rozk_min.value()) &
                 (filtered_df.get('Ciśnienie rozkurczowe', pd.Series([0])) <= widgets.spin_rozk_max.value())
                 ]
     return filtered_df
@@ -126,12 +118,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
 
-        # LEWA KOLUMNA: PRZYCISKI + FILTROWANIE (stała szerokość)
+        # LEWA 350px: przyciski + filtry
         left_widget = QWidget()
-        left_widget.setFixedWidth(350)  # NOWOŚĆ: Stały rozmiar lewej strony
+        left_widget.setFixedWidth(350)  # DOKŁADNIE 350px!
         left_layout = QVBoxLayout(left_widget)
 
-        # PRZYCISKI
+        # Przyciski
         self.btn_wczytaj = QPushButton("Wczytaj dane")
         menu = QMenu(self)
         menu.addAction("Import z CSV", import_csv)
@@ -143,79 +135,84 @@ class MainWindow(QMainWindow):
         self.btn_podglad.clicked.connect(self.update_table)
         left_layout.addWidget(self.btn_podglad)
 
-        # NOWOŚĆ: FILTROWANIE POD PRZYCISKAMI (w ScrollArea)
+        # KOMP AKT FILTROWANIE
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setMaximumHeight(250)
         filter_widget = QWidget()
         filter_layout = QVBoxLayout(filter_widget)
 
-        group_filter = QGroupBox("Dynamiczne filtry")
+        group_filter = QGroupBox("Filtry")
         form_layout = QFormLayout(group_filter)
+        form_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Filtr Wiek
+        # Wiek
         h_wiek = QHBoxLayout()
-        self.chk_wiek = QCheckBox("Filtr wieku")
+        self.chk_wiek = QCheckBox("Wiek")
         self.spin_wiek_min = QSpinBox();
         self.spin_wiek_min.setRange(0, 150);
-        self.spin_wiek_min.setValue(18)
+        self.spin_wiek_min.setMaximumWidth(55)
         self.spin_wiek_max = QSpinBox();
         self.spin_wiek_max.setRange(0, 150);
-        self.spin_wiek_max.setValue(100)
-        h_wiek.addWidget(self.chk_wiek)
-        h_wiek.addWidget(QLabel("od:"))
+        self.spin_wiek_max.setMaximumWidth(55)
+        h_wiek.addWidget(self.chk_wiek);
+        h_wiek.addWidget(QLabel("od"));
         h_wiek.addWidget(self.spin_wiek_min)
-        h_wiek.addWidget(QLabel("do:"))
+        h_wiek.addWidget(QLabel("-"));
         h_wiek.addWidget(self.spin_wiek_max)
         form_layout.addRow(h_wiek)
 
-        # Filtr Płeć
+        # Płeć
         h_plc = QHBoxLayout()
-        self.chk_plc = QCheckBox("Filtr płci")
-        self.combo_plc = QComboBox()
-        self.combo_plc.addItems(["", "Kobieta", "Mężczyzna"])
-        h_plc.addWidget(self.chk_plc)
+        self.chk_plc = QCheckBox("Płeć")
+        self.combo_plc = QComboBox();
+        self.combo_plc.addItems(["", "K", "M"]);
+        self.combo_plc.setMaximumWidth(55)
+        h_plc.addWidget(self.chk_plc);
         h_plc.addWidget(self.combo_plc)
         form_layout.addRow(h_plc)
 
-        # Filtr Ciśnienie
-        h_cisn = QHBoxLayout()
-        self.chk_cisn = QCheckBox("Filtr ciśnienia")
+        # Ciśnienie
+        h_cisn1 = QHBoxLayout()
+        self.chk_cisn = QCheckBox("Ciśnienie")
         self.spin_skur_min = QSpinBox();
         self.spin_skur_min.setRange(50, 250);
-        self.spin_skur_min.setValue(90)
+        self.spin_skur_min.setMaximumWidth(45)
         self.spin_skur_max = QSpinBox();
         self.spin_skur_max.setRange(50, 250);
-        self.spin_skur_max.setValue(180)
+        self.spin_skur_max.setMaximumWidth(45)
+        h_cisn1.addWidget(self.chk_cisn);
+        h_cisn1.addWidget(QLabel("skurcz"));
+        h_cisn1.addWidget(self.spin_skur_min)
+        h_cisn1.addWidget(QLabel("-"));
+        h_cisn1.addWidget(self.spin_skur_max)
+        form_layout.addRow(h_cisn1)
+
+        h_cisn2 = QHBoxLayout()
         self.spin_rozk_min = QSpinBox();
         self.spin_rozk_min.setRange(30, 150);
-        self.spin_rozk_min.setValue(60)
+        self.spin_rozk_min.setMaximumWidth(45)
         self.spin_rozk_max = QSpinBox();
         self.spin_rozk_max.setRange(30, 150);
-        self.spin_rozk_max.setValue(100)
-        h_cisn.addWidget(self.chk_cisn)
-        h_cisn.addWidget(QLabel("Skurcz. od/do:"))
-        h_cisn.addWidget(self.spin_skur_min);
-        h_cisn.addWidget(self.spin_skur_max)
-        h_cisn.addWidget(QLabel("Rozk. od/do:"))
-        h_cisn.addWidget(self.spin_rozk_min);
-        h_cisn.addWidget(self.spin_rozk_max)
-        form_layout.addRow(h_cisn)
+        self.spin_rozk_max.setMaximumWidth(45)
+        h_cisn2.addStretch();
+        h_cisn2.addWidget(QLabel("rozk"));
+        h_cisn2.addWidget(self.spin_rozk_min)
+        h_cisn2.addWidget(QLabel("-"));
+        h_cisn2.addWidget(self.spin_rozk_max)
+        form_layout.addRow(h_cisn2)
 
         filter_layout.addWidget(group_filter)
         scroll.setWidget(filter_widget)
-        left_layout.addWidget(scroll)  # FILTROWANIE pod przyciskami!
+        left_layout.addWidget(scroll)
 
-        main_layout.addWidget(left_widget, stretch=0)  # Lewa stała szerokość
+        main_layout.addWidget(left_widget, stretch=0)
 
-        # NOWOŚĆ: PRAWY - TYLKO TABELA (pełna szerokość)
+        # PRAWY: Tabela
         self.table = QTableWidget()
-        self.table.setRowCount(0)
-        self.table.setColumnCount(0)
         main_layout.addWidget(self.table, stretch=1)
 
-    # update_table() pozostaje bez zmian
 
-    # NOWOŚĆ: Metoda aktualizująca tabelę w głównym oknie
     def update_table(self):
         global current_df
         if current_df is None:
