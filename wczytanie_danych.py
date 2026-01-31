@@ -1,12 +1,19 @@
-import pandas as pd
 import sys
-from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QMenu
 
+import pandas as pd
 
-def wczytaj_dane():
+def import_csv():
     tabela = pd.read_csv("pomiary_cisnienia.csv")
+    print(tabela)
+    pass  # Dodaj tu kod importu CSV
 
-    pass  # Placeholder - dodaj tu swoją implementację
+def import_sql():
+    """
+    Pusta funkcja do importu z bazy SQL.
+    Zaimplementuj np. sqlite3.connect() i pd.read_sql().
+    """
+    pass  # Dodaj tu kod importu SQL
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -19,9 +26,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
 
-        # Przycisk
+        # Przycisk z menu
         self.btn_wczytaj = QPushButton("Wczytaj dane")
-        self.btn_wczytaj.clicked.connect(wczytaj_dane)
+        menu = QMenu(self)
+        menu.addAction("Import z CSV", import_csv)
+        menu.addAction("Import z bazy SQL", import_sql)
+        self.btn_wczytaj.setMenu(menu)
         layout.addWidget(self.btn_wczytaj)
 
 # Uruchomienie aplikacji
