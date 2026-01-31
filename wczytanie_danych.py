@@ -8,7 +8,6 @@ from PyQt6.QtCore import Qt
 import pandas as pd
 import numpy as np
 
-
 current_file_path = None
 current_df = None
 
@@ -20,23 +19,24 @@ def parse_pressure(value):
     return (int(match.group(1)), int(match.group(2))) if match else (None, None)
 
 def import_csv():
-    """
-    Wybór pliku CSV i załadowanie (np. pandas).
-    """
     global current_file_path, current_df
+
     file_path, _ = QFileDialog.getOpenFileName(
         parent=None,
         caption="Wybierz plik CSV",
-        directory="/Users/ola/Documents/GitHub/projekt_studia_analityk",  # Aktualny katalog
+        directory="/Users/ola/Documents/GitHub/projekt_studia_analityk",
         filter="CSV files (*.csv);;All files (*)"
     )
-
-    if file_path:  # Jeśli użytkownik wybrał plik
-        current_file_path = file_path
-        current_df = pd.read_csv(file_path)
-        print(f"Wybrano plik CSV: {current_df.shape}")  # Tymczasowy print
-    else:
+    if not file_path:
         print("Anulowano wybór pliku")
+        return
+
+    current_file_path = file_path
+    current_df = pd.read_csv(file_path)
+    print(f"Wybrano plik CSV: {current_df.shape}")
+
+    # WAŻNE: nie wywołuj tu window.create_dynamic_filters()
+    # Filtry odświeżymy z poziomu MainWindow (poniżej).
 
 def import_sql():
     """
@@ -45,31 +45,41 @@ def import_sql():
     """
     pass  # Dodaj tu kod importu SQL
 
-
 def zastosuj_filtry(df, widgets):
     filtered_df = df.copy()
 
-    # Filtr wieku - BEZPIECZNIE
-    if widgets.chk_wiek.isChecked():
-        col_wiek = df.get('Wiek', pd.Series(0.0, index=df.index))  # PRAWIDŁOWY INDEX!
-        filtered_df = filtered_df[(col_wiek >= widgets.spin_wiek_min.value()) &
-                                  (col_wiek <= widgets.spin_wiek_max.value())]
+    # Jeśli filtry jeszcze nie wygenerowane
+    if not hasattr(widgets, "filter_widgets") or not widgets.filter_widgets:
+        return filtered_df
 
-    # Filtr płeć - BEZPIECZNIE
-    if widgets.chk_plc.isChecked() and widgets.combo_plc.currentText():
-        col_plc = df.get('Płeć', pd.Series("", index=df.index))  # PRAWIDŁOWY INDEX!
-        filtered_df = filtered_df[col_plc == widgets.combo_plc.currentText()]
+    for col, controls in widgets.filter_widgets.items():
+        if not controls["chk"].isChecked():
+            continue
 
-    # Filtr ciśnienie - BEZPIECZNIE
-    if widgets.chk_cisn.isChecked():
-        col_skur = df.get('Ciśnienie skurczowe', pd.Series(0.0, index=df.index))
-        col_rozk = df.get('Ciśnienie rozkurczowe', pd.Series(0.0, index=df.index))
-        filtered_df = filtered_df[
-            (col_skur >= widgets.spin_skur_min.value()) &
-            (col_skur <= widgets.spin_skur_max.value()) &
-            (col_rozk >= widgets.spin_rozk_min.value()) &
-            (col_rozk <= widgets.spin_rozk_max.value())
-            ]
+        # Liczbowe: min/max
+        if "min" in controls and "max" in controls:
+            # bierz dane z filtered_df (po wcześniejszych filtrach) i konwertuj do liczb
+            col_data = pd.to_numeric(filtered_df[col], errors="coerce")
+
+            vmin = controls["min"].value()
+            vmax = controls["max"].value()
+
+            mask = col_data.between(vmin, vmax, inclusive="both")
+            filtered_df = filtered_df[mask]
+
+            print(f"Filtr '{col}': {vmin} - {vmax}")
+
+        # Tekstowe: == wybrana wartość
+        elif "combo" in controls:
+            val = controls["combo"].currentText()
+            if val == "":
+                continue
+
+            # porównuj jako string, żeby było stabilnie
+            mask = filtered_df[col].astype(str) == str(val)
+            filtered_df = filtered_df[mask]
+
+            print(f"Filtr '{col}': = '{val}'")
 
     return filtered_df
 
@@ -108,7 +118,6 @@ def podglad_danych():
     layout.addWidget(table)
     dialog.exec()
 
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -127,8 +136,15 @@ class MainWindow(QMainWindow):
         # Przyciski górne
         self.btn_wczytaj = QPushButton("Wczytaj dane")
         menu = QMenu(self)
-        menu.addAction("Import z CSV", import_csv)
-        menu.addAction("Import z bazy SQL", import_sql)
+
+        # NOWOŚĆ: Import CSV przez metodę okna (odświeża filtry i tabelę)
+        action_csv = menu.addAction("Import z CSV")
+        action_csv.triggered.connect(self.import_csv_and_refresh)
+
+        # SQL zostaje jak było
+        action_sql = menu.addAction("Import z bazy SQL")
+        action_sql.triggered.connect(import_sql)
+
         self.btn_wczytaj.setMenu(menu)
         left_layout.addWidget(self.btn_wczytaj)
 
@@ -136,90 +152,88 @@ class MainWindow(QMainWindow):
         self.btn_podglad.clicked.connect(self.update_table)
         left_layout.addWidget(self.btn_podglad)
 
-        # Filtrowanie kompaktowe
+        # NOWOŚĆ/POPRAWKA: Jeden ScrollArea dla dynamicznych filtrów (bez duplikowania)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setMaximumHeight(220)
+        scroll.setMaximumHeight(300)
+
         filter_widget = QWidget()
-        filter_layout = QVBoxLayout(filter_widget)
-
-        group_filter = QGroupBox("Filtry")
-        form_layout = QFormLayout(group_filter)
-        form_layout.setContentsMargins(5, 5, 5, 5)
-
-        # Wiek
-        h_wiek = QHBoxLayout()
-        self.chk_wiek = QCheckBox("Wiek")
-        self.spin_wiek_min = QSpinBox();
-        self.spin_wiek_min.setRange(0, 150);
-        self.spin_wiek_min.setMaximumWidth(55)
-        self.spin_wiek_max = QSpinBox();
-        self.spin_wiek_max.setRange(0, 150);
-        self.spin_wiek_max.setMaximumWidth(55)
-        h_wiek.addWidget(self.chk_wiek);
-        h_wiek.addWidget(QLabel("od"));
-        h_wiek.addWidget(self.spin_wiek_min)
-        h_wiek.addWidget(QLabel("-"));
-        h_wiek.addWidget(self.spin_wiek_max)
-        form_layout.addRow(h_wiek)
-
-        # Płeć
-        h_plc = QHBoxLayout()
-        self.chk_plc = QCheckBox("Płeć")
-        self.combo_plc = QComboBox();
-        self.combo_plc.addItems(["", "K", "M"]);
-        self.combo_plc.setMaximumWidth(55)
-        h_plc.addWidget(self.chk_plc);
-        h_plc.addWidget(self.combo_plc)
-        form_layout.addRow(h_plc)
-
-        # Ciśnienie
-        h_cisn1 = QHBoxLayout()
-        self.chk_cisn = QCheckBox("Ciśnienie")
-        self.spin_skur_min = QSpinBox();
-        self.spin_skur_min.setRange(50, 250);
-        self.spin_skur_min.setMaximumWidth(45)
-        self.spin_skur_max = QSpinBox();
-        self.spin_skur_max.setRange(50, 250);
-        self.spin_skur_max.setMaximumWidth(45)
-        h_cisn1.addWidget(self.chk_cisn);
-        h_cisn1.addWidget(QLabel("sk"));
-        h_cisn1.addWidget(self.spin_skur_min)
-        h_cisn1.addWidget(QLabel("-"));
-        h_cisn1.addWidget(self.spin_skur_max)
-        form_layout.addRow(h_cisn1)
-
-        h_cisn2 = QHBoxLayout()
-        self.spin_rozk_min = QSpinBox();
-        self.spin_rozk_min.setRange(30, 150);
-        self.spin_rozk_min.setMaximumWidth(45)
-        self.spin_rozk_max = QSpinBox();
-        self.spin_rozk_max.setRange(30, 150);
-        self.spin_rozk_max.setMaximumWidth(45)
-        h_cisn2.addStretch();
-        h_cisn2.addWidget(QLabel("rk"));
-        h_cisn2.addWidget(self.spin_rozk_min)
-        h_cisn2.addWidget(QLabel("-"));
-        h_cisn2.addWidget(self.spin_rozk_max)
-        form_layout.addRow(h_cisn2)
-
-        filter_layout.addWidget(group_filter)
+        self.scroll_layout = QVBoxLayout(filter_widget)  # tu będą dodawane wiersze filtrów
         scroll.setWidget(filter_widget)
         left_layout.addWidget(scroll)
 
-        # NOWOŚĆ: Przycisk Filtruj i wyświetl (bez emotek)
+        # NOWOŚĆ: miejsce na kontrolki filtrów
+        self.filter_widgets = {}
+
+        # Przycisk Filtruj i wyświetl
         self.btn_filtruj = QPushButton("Filtruj i wyświetl")
         self.btn_filtruj.clicked.connect(self.update_table)
-        self.btn_filtruj.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
+        self.btn_filtruj.setStyleSheet(
+    "background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
         left_layout.addWidget(self.btn_filtruj)
 
-        left_layout.addStretch()
-        main_layout.addWidget(left_widget, stretch=0)
+    def import_csv_and_refresh(self):
+        import_csv()
+        self.create_dynamic_filters()
+        self.update_table()
 
-        # PRAWY: Tabela
-        self.table = QTableWidget()
-        self.table.setAlternatingRowColors(True)
-        main_layout.addWidget(self.table, stretch=1)
+    def create_dynamic_filters(self):
+        """Tworzy kontrolki filtrowania na podstawie kolumn current_df."""
+        global current_df
+        if current_df is None:
+            return
+
+        # Wyczyść stare filtry
+        while self.scroll_layout.count():
+            item = self.scroll_layout.takeAt(0)
+            layout = item.layout()
+            widget = item.widget()
+
+            if layout is not None:
+                while layout.count():
+                    sub = layout.takeAt(0)
+                    if sub.widget():
+                        sub.widget().deleteLater()
+                layout.deleteLater()
+
+            if widget is not None:
+                widget.deleteLater()
+
+        # Słownik kontrolek filtrów
+        self.filter_widgets = {}  # {col: {'chk': QCheckBox, ...}}
+
+        for col in current_df.columns:
+            chk = QCheckBox(str(col))
+            chk.setChecked(False)
+
+            layout_col = QHBoxLayout()
+            layout_col.addWidget(chk)
+
+            # Liczby: min/max
+            if pd.api.types.is_numeric_dtype(current_df[col]):
+                col_series = pd.to_numeric(current_df[col], errors="coerce")
+                vmin = col_series.min()
+                vmax = col_series.max()
+
+                # sensowne defaulty gdy kolumna ma same NaN
+                if pd.isna(vmin): vmin = 0
+                if pd.isna(vmax): vmax = 0
+
+                spin_min = QSpinBox()
+                spin_max = QSpinBox()
+
+                spin_min.setMaximumWidth(70)
+                spin_max.setMaximumWidth(70)
+
+                spin_min.setRange(int(vmin) - 1, int(vmax) + 1)
+                spin_max.setRange(int(vmin) - 1, int(vmax) + 1)
+
+                spin_min.setValue(int(vmin))
+                spin_max.setValue(int(vmax))
+
+                layout_col.addWidget(QLabel("min"))
+                layout_col.addWidget(spin_min)
+                layout_col
 
     def update_table(self):
         global current_df
