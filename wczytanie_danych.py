@@ -4,13 +4,15 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QPushButton, QMenu, QScrollArea, QTableWidget, QTableWidgetItem,
     QLabel, QCheckBox, QComboBox, QSpinBox, QStackedWidget,
-    QFileDialog
+    QFileDialog, QDoubleSpinBox
 )
+from PyQt6.QtCore import QTimer
 
 
 from PyQt6.QtCore import Qt
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 current_file_path = None
 current_df = None
@@ -84,6 +86,47 @@ def zastosuj_filtry(df, widgets):
             filtered_df = filtered_df[mask]
 
             print(f"Filtr '{col}': = '{val}'")
+
+    if widgets.chk_norma.isChecked():
+        min_norm = widgets.spin_norma_min.value()
+        max_norm = widgets.spin_norma_max.value()
+
+        cols_norm = []
+        if widgets.cmb_norma_kol1.currentText():
+            cols_norm.append(widgets.cmb_norma_kol1.currentText())
+        if widgets.cmb_norma_kol2.currentText() and widgets.cmb_norma_kol2.currentText() != widgets.cmb_norma_kol1.currentText():
+            cols_norm.append(widgets.cmb_norma_kol2.currentText())
+
+        if cols_norm:
+            # "w normie": WSZYSTKIE kolumny muszą być w zakresie
+            mask_norm = pd.Series(True, index=filtered_df.index)
+            for col in cols_norm:
+                col_data = pd.to_numeric(filtered_df[col], errors='coerce')
+                mask_norm &= col_data.between(min_norm, max_norm, inclusive="both")
+
+            # "poniżej": WSZYSTKIE kolumny muszą być PONIŻEJ
+            mask_below = pd.Series(True, index=filtered_df.index)
+            for col in cols_norm:
+                col_data = pd.to_numeric(filtered_df[col], errors='coerce')
+                mask_below &= (col_data < min_norm)
+
+            # "powyżej": WSZYSTKIE kolumny muszą być POWYŻEJ
+            mask_above = pd.Series(True, index=filtered_df.index)
+            for col in cols_norm:
+                col_data = pd.to_numeric(filtered_df[col], errors='coerce')
+                mask_above &= (col_data > max_norm)
+
+            # Zastosuj wybrane kategorie normy
+            final_mask = pd.Series(False, index=filtered_df.index)
+            if widgets.chk_norma_ok.isChecked():
+                final_mask |= mask_norm
+            if widgets.chk_norma_nizej.isChecked():
+                final_mask |= mask_below
+            if widgets.chk_norma_wyzej.isChecked():
+                final_mask |= mask_above
+
+            filtered_df = filtered_df[final_mask]
+            print(f"NORMA [{min_norm}-{max_norm}] na {cols_norm}: {len(final_mask[final_mask])} wierszy")
 
     return filtered_df
 
@@ -173,6 +216,54 @@ class MainWindow(QMainWindow):
             "background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;"
         )
         left_layout.addWidget(self.btn_filtruj)
+
+        # Widget NORMY z wyborem kolumn (DODAJ po btn_filtruj)
+        self.norma_widget = QWidget()
+        norma_layout = QHBoxLayout(self.norma_widget)
+        norma_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.chk_norma = QCheckBox("NORMA")
+        self.chk_norma.stateChanged.connect(self.toggle_norma_filter)
+
+        self.lbl_norma_kol1 = QLabel("Kol 1:")
+        self.cmb_norma_kol1 = QComboBox()
+        self.cmb_norma_kol1.setMaximumWidth(90)
+
+        self.lbl_norma_kol2 = QLabel("Kol 2:")
+        self.cmb_norma_kol2 = QComboBox()
+        self.cmb_norma_kol2.setMaximumWidth(90)
+
+        self.spin_norma_min = QDoubleSpinBox()
+        self.spin_norma_min.setDecimals(2)
+        self.spin_norma_min.setMaximumWidth(60)
+
+        self.spin_norma_max = QDoubleSpinBox()
+        self.spin_norma_max.setDecimals(2)
+        self.spin_norma_max.setMaximumWidth(60)
+
+        norma_layout.addWidget(self.chk_norma)
+        norma_layout.addWidget(self.lbl_norma_kol1)
+        norma_layout.addWidget(self.cmb_norma_kol1)
+        norma_layout.addWidget(self.lbl_norma_kol2)
+        norma_layout.addWidget(self.cmb_norma_kol2)
+        norma_layout.addWidget(QLabel("od"))
+        norma_layout.addWidget(self.spin_norma_min)
+        norma_layout.addWidget(QLabel("do"))
+        norma_layout.addWidget(self.spin_norma_max)
+
+        left_layout.addWidget(self.norma_widget)
+
+        # ScrollArea na filtry (już masz) - DODAJ filtr NORMY na końcu:
+        self.norma_filter_widget = QWidget()
+        self.norma_filter_layout = QHBoxLayout(self.norma_filter_widget)
+        self.chk_norma_ok = QCheckBox("w normie")
+        self.chk_norma_nizej = QCheckBox("poniżej normy")
+        self.chk_norma_wyzej = QCheckBox("powyżej normy")
+        self.norma_filter_layout.addWidget(self.chk_norma_ok)
+        self.norma_filter_layout.addWidget(self.chk_norma_nizej)
+        self.norma_filter_layout.addWidget(self.chk_norma_wyzej)
+        self.norma_filter_widget.setVisible(False)
+        self.scroll_layout.addWidget(self.norma_filter_widget)  # DODAJ tutaj
 
         # Przycisk Statystyka (toggle: on/off)
         self.btn_statystyka = QPushButton("Statystyka")
@@ -278,7 +369,8 @@ class MainWindow(QMainWindow):
         import_csv()
         self.create_dynamic_filters()
         self.refresh_stats_controls()
-        self.update_table()
+        self.update_norma_controls()
+        QTimer.singleShot(100, self.update_table)
 
     def create_dynamic_filters(self):
         global current_df
@@ -511,6 +603,63 @@ class MainWindow(QMainWindow):
             self.view_stack.setCurrentIndex(1)  # statystyka [web:207]
         else:
             self.view_stack.setCurrentIndex(0)  # dane [web:207]
+
+    def toggle_norma_filter(self, state):
+        """Bezpieczna wersja z ochroną przed usuniętym layoutem"""
+
+        # Zabezpieczenie: sprawdź czy scroll_layout istnieje i nie jest pusty
+        if not hasattr(self, 'scroll_layout') or self.scroll_layout.count() == 0:
+            return  # czekaj na załadowanie danych
+
+        visible = bool(state)
+
+        # Zawsze odtwarzaj widget - nigdy nie ufaj staremu
+        if visible:
+            # Usuń stary jeśli istnieje
+            try:
+                if hasattr(self, 'norma_filter_widget') and self.norma_filter_widget:
+                    self.scroll_layout.removeWidget(self.norma_filter_widget)
+                    self.norma_filter_widget.deleteLater()
+            except:
+                pass
+
+            # Stwórz nowy
+            self.norma_filter_widget = QWidget()
+            self.norma_filter_layout = QHBoxLayout(self.norma_filter_widget)
+            self.chk_norma_ok = QCheckBox("w normie")
+            self.chk_norma_nizej = QCheckBox("poniżej normy")
+            self.chk_norma_wyzej = QCheckBox("powyżej normy")
+            self.norma_filter_layout.addWidget(self.chk_norma_ok)
+            self.norma_filter_layout.addWidget(self.chk_norma_nizej)
+            self.norma_filter_layout.addWidget(self.chk_norma_wyzej)
+
+            self.scroll_layout.insertWidget(0, self.norma_filter_widget)  # DODAJ na początku scrolla
+            self.spin_norma_min.setValue(0.0)
+            self.spin_norma_max.setValue(100.0)
+        else:
+            # Ukryj bezpiecznie
+            try:
+                if hasattr(self, 'norma_filter_widget') and self.norma_filter_widget:
+                    self.norma_filter_widget.setVisible(False)
+            except:
+                pass
+
+    def update_norma_controls(self):
+        global current_df
+        if current_df is None:
+            self.cmb_norma_kol1.clear()
+            self.cmb_norma_kol2.clear()
+            return
+
+        num_cols = [c for c in current_df.columns if pd.api.types.is_numeric_dtype(current_df[c])]
+        self.cmb_norma_kol1.blockSignals(True)
+        self.cmb_norma_kol2.blockSignals(True)
+        self.cmb_norma_kol1.clear()
+        self.cmb_norma_kol2.clear()
+        self.cmb_norma_kol1.addItems(num_cols)
+        self.cmb_norma_kol2.addItems(num_cols)
+        self.cmb_norma_kol1.blockSignals(False)
+        self.cmb_norma_kol2.blockSignals(False)
 
 
 if __name__ == "__main__":
