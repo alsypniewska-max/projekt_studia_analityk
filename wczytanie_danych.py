@@ -217,39 +217,52 @@ class MainWindow(QMainWindow):
         )
         left_layout.addWidget(self.btn_filtruj)
 
-        # Widget NORMY z wyborem kolumn (DODAJ po btn_filtruj)
+        # Widget NORMY - 3 wiersze (bardziej czytelny)
         self.norma_widget = QWidget()
-        norma_layout = QHBoxLayout(self.norma_widget)
-        norma_layout.setContentsMargins(0, 0, 0, 0)
+        norma_layout = QVBoxLayout(self.norma_widget)  # ZMIANA: QVBoxLayout zamiast QHBoxLayout
+        norma_layout.setContentsMargins(5, 5, 5, 5)
+        norma_layout.setSpacing(4)
 
+        # WIERSZ 1: Checkbox NORMA
+        row1 = QHBoxLayout()
         self.chk_norma = QCheckBox("NORMA")
         self.chk_norma.stateChanged.connect(self.toggle_norma_filter)
+        row1.addWidget(self.chk_norma)
+        row1.addStretch(1)
+        norma_layout.addLayout(row1)
 
-        self.lbl_norma_kol1 = QLabel("Kol 1:")
+        # WIERSZ 2: Wybór kolumn
+        row2 = QHBoxLayout()
+        row2.setSpacing(6)
+        row2.addWidget(QLabel("Kolumna 1:"))
         self.cmb_norma_kol1 = QComboBox()
-        self.cmb_norma_kol1.setMaximumWidth(90)
+        self.cmb_norma_kol1.setMaximumWidth(120)
+        row2.addWidget(self.cmb_norma_kol1)
 
-        self.lbl_norma_kol2 = QLabel("Kol 2:")
+        row2.addWidget(QLabel("Kolumna 2:"))
         self.cmb_norma_kol2 = QComboBox()
-        self.cmb_norma_kol2.setMaximumWidth(90)
+        self.cmb_norma_kol2.setMaximumWidth(120)
+        row2.addWidget(self.cmb_norma_kol2)
+        row2.addStretch(1)
+        norma_layout.addLayout(row2)
 
+        # WIERSZ 3: Zakres normy
+        row3 = QHBoxLayout()
+        row3.setSpacing(6)
+        row3.addWidget(QLabel("Zakres:"))
         self.spin_norma_min = QDoubleSpinBox()
         self.spin_norma_min.setDecimals(2)
-        self.spin_norma_min.setMaximumWidth(60)
+        self.spin_norma_min.setMaximumWidth(80)
+        row3.addWidget(self.spin_norma_min)
 
+        row3.addWidget(QLabel("do"))
         self.spin_norma_max = QDoubleSpinBox()
         self.spin_norma_max.setDecimals(2)
-        self.spin_norma_max.setMaximumWidth(60)
+        self.spin_norma_max.setMaximumWidth(80)
+        row3.addWidget(self.spin_norma_max)
 
-        norma_layout.addWidget(self.chk_norma)
-        norma_layout.addWidget(self.lbl_norma_kol1)
-        norma_layout.addWidget(self.cmb_norma_kol1)
-        norma_layout.addWidget(self.lbl_norma_kol2)
-        norma_layout.addWidget(self.cmb_norma_kol2)
-        norma_layout.addWidget(QLabel("od"))
-        norma_layout.addWidget(self.spin_norma_min)
-        norma_layout.addWidget(QLabel("do"))
-        norma_layout.addWidget(self.spin_norma_max)
+        row3.addStretch(1)
+        norma_layout.addLayout(row3)
 
         left_layout.addWidget(self.norma_widget)
 
