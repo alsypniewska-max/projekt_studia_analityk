@@ -87,30 +87,32 @@ def zastosuj_filtry(df, widgets):
 
             print(f"Filtr '{col}': = '{val}'")
 
+    # Filtr NORMY (zastąp cały blok if widgets.chk_norma.isChecked():)
     if widgets.chk_norma.isChecked():
         min_norm = widgets.spin_norma_min.value()
         max_norm = widgets.spin_norma_max.value()
 
         cols_norm = []
+        # Bierz obie kolumny jeśli wybrane (nawet tę samą)
         if widgets.cmb_norma_kol1.currentText():
             cols_norm.append(widgets.cmb_norma_kol1.currentText())
-        if widgets.cmb_norma_kol2.currentText() and widgets.cmb_norma_kol2.currentText() != widgets.cmb_norma_kol1.currentText():
+        if widgets.cmb_norma_kol2.currentText():
             cols_norm.append(widgets.cmb_norma_kol2.currentText())
 
         if cols_norm:
-            # "w normie": WSZYSTKIE kolumny muszą być w zakresie
+            # "w normie": WSZYSTKIE wybrane kolumny muszą być w zakresie
             mask_norm = pd.Series(True, index=filtered_df.index)
             for col in cols_norm:
                 col_data = pd.to_numeric(filtered_df[col], errors='coerce')
                 mask_norm &= col_data.between(min_norm, max_norm, inclusive="both")
 
-            # "poniżej": WSZYSTKIE kolumny muszą być PONIŻEJ
+            # "poniżej": WSZYSTKIE wybrane kolumny muszą być PONIŻEJ
             mask_below = pd.Series(True, index=filtered_df.index)
             for col in cols_norm:
                 col_data = pd.to_numeric(filtered_df[col], errors='coerce')
                 mask_below &= (col_data < min_norm)
 
-            # "powyżej": WSZYSTKIE kolumny muszą być POWYŻEJ
+            # "powyżej": WSZYSTKIE wybrane kolumny muszą być POWYŻEJ
             mask_above = pd.Series(True, index=filtered_df.index)
             for col in cols_norm:
                 col_data = pd.to_numeric(filtered_df[col], errors='coerce')
