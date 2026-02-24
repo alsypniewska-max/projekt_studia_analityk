@@ -317,6 +317,17 @@ class MainWindow(QMainWindow):
         wiz_row4.addStretch(1)
         wiz_layout.addLayout(wiz_row4)
 
+        # WIERSZ: Porównanie oczu (DODAJ TUTAJ)
+        eyes_row = QHBoxLayout()
+        eyes_row.addWidget(QLabel("Lewe oko:"))
+        self.cmb_eye_left = QComboBox()
+        eyes_row.addWidget(self.cmb_eye_left)
+        eyes_row.addWidget(QLabel("Prawe oko:"))
+        self.cmb_eye_right = QComboBox()
+        eyes_row.addWidget(self.cmb_eye_right)
+        eyes_row.addStretch(1)
+        wiz_layout.addLayout(eyes_row)
+
         # nowe do wykresów
         opt_row = QHBoxLayout()
         opt_row.addWidget(QLabel("Agregacja:"))
@@ -815,6 +826,17 @@ class MainWindow(QMainWindow):
         self.cmb_wiz_group.addItems(all_cols)
         self.cmb_wiz_group.blockSignals(False)
 
+        # DODAJ NA KOŃCU update_wizualizacja_controls()
+        self.cmb_eye_left.blockSignals(True)
+        self.cmb_eye_left.clear()
+        self.cmb_eye_left.addItems(num_cols)
+        self.cmb_eye_left.blockSignals(False)
+
+        self.cmb_eye_right.blockSignals(True)
+        self.cmb_eye_right.clear()
+        self.cmb_eye_right.addItems(num_cols)
+        self.cmb_eye_right.blockSignals(False)
+
     def run_visualization(self):
         global current_df
         if current_df is None:
@@ -876,6 +898,37 @@ class MainWindow(QMainWindow):
             # Słupkowy: X = kategoria, Y = liczba; opcjonalnie druga kategoria w "Grupuj po"
             if not x_col or not y_col:
                 return
+            # --- PORÓWNANIE OCZU (DODAJ TUTAJ, przed if g_col:) ---
+            left_col = self.cmb_eye_left.currentText().strip()
+            right_col = self.cmb_eye_right.currentText().strip()
+
+            if left_col and right_col and left_col != right_col:
+                grp2 = dfp.groupby(x_col, dropna=False)[[left_col, right_col]].agg(agg)
+
+                # TopN + sortowanie po sumie obu oczu
+                if grp2.shape[0] > topn:
+                    score = grp2.sum(axis=1, numeric_only=True).sort_values(ascending=False)
+                    grp2 = grp2.loc[score.index[:topn]]
+
+                if sort_mode != "brak":
+                    score = grp2.sum(axis=1, numeric_only=True).sort_values(
+                        ascending=(sort_mode == "rosnąco")
+                    )
+                    grp2 = grp2.loc[score.index]
+
+                grp2.plot(kind="bar", ax=ax)  # grouped bars dla 2 kolumn [web:489]
+                ax.set_title(title or f"Słupkowy ({agg}): porównanie oczu wg {x_col}")
+                ax.set_xlabel(xlabel or x_col)
+                ax.set_ylabel(ylabel or f"{agg}({left_col}/{right_col})")
+                ax.legend(["Lewe", "Prawe"])
+                # ważne: kończymy blok słupkowy tutaj
+                ax.grid(True, alpha=0.25)
+                plt.tight_layout()
+                # dalej kod wstawiania canvas (ten sam co zawsze)
+                # UWAGA: tu dajemy return, żeby nie wchodzić w pivot_table poniżej
+                # (wklej 'return' jeśli poniżej masz jeszcze logikę słupkowego)
+                return
+            # --- KONIEC PORÓWNANIA OCZU ---
 
             # pivot_table daje automatyczne grupy i agregację [web:465]
             if g_col:
