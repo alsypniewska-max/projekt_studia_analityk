@@ -844,6 +844,12 @@ class MainWindow(QMainWindow):
 
         # 1) ZAWSZE bierzemy dane po filtrach (koty/psy/itd.)
         dfp = zastosuj_filtry(current_df, self)
+        # --- NAPRAWA: usuń zdublowane nazwy kolumn (pivot/groupby tego nie znosi) ---
+        if dfp.columns.duplicated().any():
+            dup = dfp.columns[dfp.columns.duplicated()].tolist()
+            print("UWAGA: zdublowane kolumny w dfp:", dup)
+            dfp = dfp.loc[:, ~dfp.columns.duplicated()].copy()
+
         if dfp.empty:
             return
 
@@ -851,6 +857,12 @@ class MainWindow(QMainWindow):
         x_col = self.cmb_wiz_x.currentText().strip()
         y_col = self.cmb_wiz_y.currentText().strip()
         g_col = self.cmb_wiz_group.currentText().strip()  # może być ""
+        print("WIZ:", wiz_type, "X=", repr(x_col), "Y=", repr(y_col), "G=", repr(g_col))
+        print("dfp shape:", dfp.shape)
+        print("duplikaty kolumn:", dfp.columns[dfp.columns.duplicated()].tolist())
+        print("czy X jest w dfp:", x_col in dfp.columns, "czy Y:", y_col in dfp.columns, "czy G:",
+              (g_col in dfp.columns if g_col else None))
+
         agg = self.cmb_wiz_agg.currentText()
         topn = int(self.spin_wiz_topn.value())
         sort_mode = self.cmb_wiz_sort.currentText()
@@ -924,24 +936,52 @@ class MainWindow(QMainWindow):
                 # ważne: kończymy blok słupkowy tutaj
                 ax.grid(True, alpha=0.25)
                 plt.tight_layout()
-                # dalej kod wstawiania canvas (ten sam co zawsze)
-                # UWAGA: tu dajemy return, żeby nie wchodzić w pivot_table poniżej
-                # (wklej 'return' jeśli poniżej masz jeszcze logikę słupkowego)
+
+                # --- WSTAW CANVAS I POKAŻ WYKRES ---
+                layout = self.chart_widget.layout()
+                if layout is None:
+                    layout = QVBoxLayout(self.chart_widget)
+                while layout.count():
+                    item = layout.takeAt(0)
+                    w = item.widget()
+                    if w is not None:
+                        w.deleteLater()
+
+                canvas = FigureCanvas(fig)
+                layout.addWidget(canvas)
+
+                self.view_stack.setVisible(False)
+                self.chart_widget.setVisible(True)
+
+                plt.close(fig)  # żeby nie otwierać 20+ figur
+
                 return
+
             # --- KONIEC PORÓWNANIA OCZU ---
+
+            if g_col == x_col:
+                print("Grupuj po nie może być takie samo jak X:", g_col)
+                return
 
             # pivot_table daje automatyczne grupy i agregację [web:465]
             if g_col:
-                pvt = pd.pivot_table(
-                    dfp,
-                    values=y_col,
-                    index=x_col,
-                    columns=g_col,
-                    aggfunc=agg
-                )
+                try:
+                    dfp[y_col] = pd.to_numeric(dfp[y_col], errors="coerce")
+                    pvt = pd.pivot_table(dfp, values=y_col, index=x_col, columns=g_col, aggfunc=agg)
+                    print("pivot_table OK, shape:", pvt.shape)
+                    print(pvt.head(3))
+                except Exception as e:
+                    print("BŁĄD pivot_table:", type(e).__name__, e)
+                    return
+
+                if pvt.empty:
+                    print("pivot_table puste (brak danych po agregacji)")
+                    return
+
                 pvt = _apply_topn_and_sort(pvt)
                 pvt.plot(kind="bar", ax=ax)
                 ax.legend(title=g_col)
+
             else:
                 grp = dfp.groupby(x_col, dropna=False)[y_col].agg(agg)
                 grp = grp.sort_values(ascending=False)
