@@ -1037,6 +1037,7 @@ class MainWindow(QMainWindow):
         self.chart_layout.addWidget(canvas)
 
         self.view_stack.setVisible(False)
+        print("CHART_WIDGET ID:", id(self.chart_widget))
         self.chart_widget.setVisible(True)
         self.btn_back_from_chart.setVisible(True)
         self.btn_save_png.setVisible(True)
