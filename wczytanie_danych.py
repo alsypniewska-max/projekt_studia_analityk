@@ -327,6 +327,16 @@ class MainWindow(QMainWindow):
         eyes_row.addWidget(self.cmb_eye_right)
         eyes_row.addStretch(1)
         wiz_layout.addLayout(eyes_row)
+        self.chk_compare_eyes = QCheckBox("Porównaj lewe/prawe oko")
+        self.chk_compare_eyes.setChecked(False)
+        # pokaż checkbox pod wyborem oczu
+        wiz_layout.addWidget(self.chk_compare_eyes)
+
+        # opcjonalnie: domyślnie zablokuj comboboksy oczu, dopóki checkbox OFF
+        self.cmb_eye_left.setEnabled(False)
+        self.cmb_eye_right.setEnabled(False)
+        self.chk_compare_eyes.toggled.connect(self.cmb_eye_left.setEnabled)
+        self.chk_compare_eyes.toggled.connect(self.cmb_eye_right.setEnabled)
 
         # nowe do wykresów
         opt_row = QHBoxLayout()
@@ -914,7 +924,7 @@ class MainWindow(QMainWindow):
             left_col = self.cmb_eye_left.currentText().strip()
             right_col = self.cmb_eye_right.currentText().strip()
 
-            if left_col and right_col and left_col != right_col:
+            if self.chk_compare_eyes.isChecked() and left_col and right_col and left_col != right_col:
                 grp2 = dfp.groupby(x_col, dropna=False)[[left_col, right_col]].agg(agg)
 
                 # TopN + sortowanie po sumie obu oczu
