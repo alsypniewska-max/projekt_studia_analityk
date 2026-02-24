@@ -291,10 +291,9 @@ class MainWindow(QMainWindow):
         wiz_row2 = QHBoxLayout()
         wiz_row2.addWidget(QLabel("Typ:"))
         self.cmb_wiz_type = QComboBox()
-        self.cmb_wiz_type.addItems([
-            "Histogram", "Boxplot", "Słupkowy", "Rozrzut",
-            "Podwójny słupkowy", "Linia", "Violin plot"
-        ])
+        self.cmb_wiz_type.clear()
+        self.cmb_wiz_type.addItems(["Histogram", "Słupkowy"])
+
         wiz_row2.addWidget(self.cmb_wiz_type)
         wiz_row2.addStretch(1)
         wiz_layout.addLayout(wiz_row2)
@@ -317,6 +316,28 @@ class MainWindow(QMainWindow):
         wiz_row4.addWidget(self.cmb_wiz_group)
         wiz_row4.addStretch(1)
         wiz_layout.addLayout(wiz_row4)
+
+        # nowe do wykresów
+        opt_row = QHBoxLayout()
+        opt_row.addWidget(QLabel("Agregacja:"))
+        self.cmb_wiz_agg = QComboBox()
+        self.cmb_wiz_agg.addItems(["mean", "median", "count", "sum"])
+        opt_row.addWidget(self.cmb_wiz_agg)
+
+        opt_row.addWidget(QLabel("Top N:"))
+        self.spin_wiz_topn = QSpinBox()
+        self.spin_wiz_topn.setRange(1, 200)
+        self.spin_wiz_topn.setValue(30)
+        self.spin_wiz_topn.setMaximumWidth(70)
+        opt_row.addWidget(self.spin_wiz_topn)
+
+        opt_row.addWidget(QLabel("Sortuj:"))
+        self.cmb_wiz_sort = QComboBox()
+        self.cmb_wiz_sort.addItems(["brak", "rosnąco", "malejąco"])
+        opt_row.addWidget(self.cmb_wiz_sort)
+
+        opt_row.addStretch(1)
+        wiz_layout.addLayout(opt_row)
 
         # WIERSZ 4.5: Norma na wykresie
         wiz_row_norma = QHBoxLayout()
@@ -767,102 +788,139 @@ class MainWindow(QMainWindow):
     def update_wizualizacja_controls(self):
         global current_df
         if current_df is None:
+            self.cmb_wiz_x.clear()
+            self.cmb_wiz_y.clear()
+            self.cmb_wiz_group.clear()
             return
 
         num_cols = [c for c in current_df.columns if pd.api.types.is_numeric_dtype(current_df[c])]
-        cat_cols = [c for c in current_df.columns if current_df[c].dtype == 'object']
+        all_cols = list(current_df.columns)
 
-        for cmb in [self.cmb_wiz_x, self.cmb_wiz_y]:
-            cmb.blockSignals(True)
-            cmb.clear()
-            cmb.addItems(num_cols)
-            cmb.blockSignals(False)
+        # X: dowolna kolumna (kategorie/numery)
+        self.cmb_wiz_x.blockSignals(True)
+        self.cmb_wiz_x.clear()
+        self.cmb_wiz_x.addItems(all_cols)
+        self.cmb_wiz_x.blockSignals(False)
 
+        # Y: tylko liczbowe
+        self.cmb_wiz_y.blockSignals(True)
+        self.cmb_wiz_y.clear()
+        self.cmb_wiz_y.addItems(num_cols)
+        self.cmb_wiz_y.blockSignals(False)
+
+        # Grupuj po: dowolna kolumna lub pusto
         self.cmb_wiz_group.blockSignals(True)
         self.cmb_wiz_group.clear()
         self.cmb_wiz_group.addItem("")
-        self.cmb_wiz_group.addItems(cat_cols)
+        self.cmb_wiz_group.addItems(all_cols)
         self.cmb_wiz_group.blockSignals(False)
 
     def run_visualization(self):
-        print("=== START WIZUALIZACJI ===")
         global current_df
         if current_df is None:
-            print("BRAK DANYCH current_df")
             return
 
-        filtered_data = zastosuj_filtry(current_df, self)
-        print(f"Przefiltrowane dane: {len(filtered_data)} wierszy")
-        if filtered_data.empty:
-            print("DANE PUSTE po filtrach")
+        # 1) ZAWSZE bierzemy dane po filtrach (koty/psy/itd.)
+        dfp = zastosuj_filtry(current_df, self)
+        if dfp.empty:
             return
-
-        print(f"X: '{self.cmb_wiz_x.currentText()}' Y: '{self.cmb_wiz_y.currentText()}'")
-        print(f"Typ: '{self.cmb_wiz_type.currentText()}'")
-
-        col = self.cmb_wiz_y.currentText()
-        if not col:
-            print("BRAK KOLUMNY Y")
-            return
-        print(f"Kolumna Y '{col}' istnieje w danych: {col in filtered_data.columns}")
 
         wiz_type = self.cmb_wiz_type.currentText()
-        x_col = self.cmb_wiz_x.currentText()
-        y_col = self.cmb_wiz_y.currentText()
-        group_col = self.cmb_wiz_group.currentText()
-        title = self.txt_title.text() or f"Wizualizacja: {y_col or x_col}"
-        xlabel = self.txt_xlabel.text() or x_col or "X"
-        ylabel = self.txt_ylabel.text() or y_col or "Y"
+        x_col = self.cmb_wiz_x.currentText().strip()
+        y_col = self.cmb_wiz_y.currentText().strip()
+        g_col = self.cmb_wiz_group.currentText().strip()  # może być ""
+        agg = self.cmb_wiz_agg.currentText()
+        topn = int(self.spin_wiz_topn.value())
+        sort_mode = self.cmb_wiz_sort.currentText()
+
+        title = self.txt_title.text().strip()
+        xlabel = self.txt_xlabel.text().strip()
+        ylabel = self.txt_ylabel.text().strip()
 
         plt.ioff()
         fig, ax = plt.subplots(figsize=(10, 6))
 
-        if wiz_type == "Histogram" and y_col:
-            filtered_data[y_col].hist(ax=ax, bins=20, alpha=0.7, edgecolor='black')
+        # helper: sortowanie i topN (po sumie/średniej po kolumnach)
+        def _apply_topn_and_sort(pvt: pd.DataFrame) -> pd.DataFrame:
+            out = pvt.copy()
+            if out.shape[0] > topn:
+                # wybierz topN po "łącznej wielkości" w wierszu
+                score = out.sum(axis=1, numeric_only=True)
+                out = out.loc[score.sort_values(ascending=False).index[:topn]]
+            if sort_mode != "brak":
+                score = out.sum(axis=1, numeric_only=True)
+                out = out.loc[score.sort_values(ascending=(sort_mode == "rosnąco")).index]
+            return out
 
-        elif wiz_type == "Boxplot" and y_col:
-            filtered_data[[y_col]].boxplot(ax=ax)
+        if wiz_type == "Histogram":
+            # Histogram: używamy tylko Y (X niepotrzebne)
+            s = pd.to_numeric(dfp[y_col], errors="coerce").dropna()
+            if s.empty:
+                return
 
-        elif wiz_type == "Słupkowy" and x_col and y_col:
-            filtered_data.groupby(x_col)[y_col].mean().plot(kind='bar', ax=ax)
+            if g_col:
+                # histogram per grupa (nakładany)
+                for name, sub in dfp.groupby(g_col, dropna=False):
+                    ss = pd.to_numeric(sub[y_col], errors="coerce").dropna()
+                    if not ss.empty:
+                        ax.hist(ss, bins=20, alpha=0.45, label=str(name), edgecolor="black")
+                ax.legend(title=g_col)
+            else:
+                ax.hist(s, bins=20, alpha=0.75, edgecolor="black")
 
-        elif wiz_type == "Rozrzut" and x_col and y_col:
-            ax.scatter(filtered_data[x_col], filtered_data[y_col], alpha=0.6)
+            ax.set_title(title or f"Histogram: {y_col}")
+            ax.set_xlabel(xlabel or y_col)
+            ax.set_ylabel(ylabel or "Częstość")
 
-        elif wiz_type == "Podwójny słupkowy" and x_col and y_col and group_col:
-            pd.pivot_table(filtered_data, values=y_col, index=x_col, columns=group_col).plot(kind='bar', ax=ax)
+        elif wiz_type == "Słupkowy":
+            # Słupkowy: X = kategoria, Y = liczba; opcjonalnie druga kategoria w "Grupuj po"
+            if not x_col or not y_col:
+                return
 
-        elif wiz_type == "Linia" and x_col and y_col:
-            ax.plot(filtered_data[x_col], filtered_data[y_col])
+            # pivot_table daje automatyczne grupy i agregację [web:465]
+            if g_col:
+                pvt = pd.pivot_table(
+                    dfp,
+                    values=y_col,
+                    index=x_col,
+                    columns=g_col,
+                    aggfunc=agg
+                )
+                pvt = _apply_topn_and_sort(pvt)
+                pvt.plot(kind="bar", ax=ax)
+                ax.legend(title=g_col)
+            else:
+                grp = dfp.groupby(x_col, dropna=False)[y_col].agg(agg)
+                grp = grp.sort_values(ascending=False)
+                grp = grp.head(topn)
+                grp.plot(kind="bar", ax=ax)
 
-        elif wiz_type == "Violin plot" and y_col:
-            ax.violinplot(filtered_data[y_col], positions=[1], showmeans=True)
+            ax.set_title(title or f"Słupkowy ({agg}): {y_col} wg {x_col}")
+            ax.set_xlabel(xlabel or x_col)
+            ax.set_ylabel(ylabel or f"{agg}({y_col})")
 
-        ax.set_title(title, fontsize=14, fontweight='bold')
-        ax.set_xlabel(xlabel, fontsize=12)
-        ax.set_ylabel(ylabel, fontsize=12)
-        ax.grid(True, alpha=0.3)
-
-        # NORMA na wykresie
-        if self.chk_wiz_norma.isChecked() and self.chk_norma.isChecked() and y_col:
+        # NORMA jako pas (tylko gdy Y jest na osi Y)
+        if self.chk_wiz_norma.isChecked() and y_col:
             min_norm = self.spin_norma_min.value()
             max_norm = self.spin_norma_max.value()
-            ax.axhspan(min_norm, max_norm, alpha=0.2, color='green', label=f'Norma [{min_norm}-{max_norm}]')
-            ax.axhline(y=min_norm, color='green', linestyle='--', linewidth=2, alpha=0.8, label=f'Dolna: {min_norm}')
-            ax.axhline(y=max_norm, color='green', linestyle='--', linewidth=2, alpha=0.8, label=f'Górna: {max_norm}')
-            mean_val = filtered_data[y_col].mean()
-            ax.axhline(y=mean_val, color='blue', linestyle='-', linewidth=2, label=f'Średnia: {mean_val:.2f}')
+            ax.axhspan(min_norm, max_norm, alpha=0.15, color="green", label=f"Norma [{min_norm}-{max_norm}]")
+            ax.axhline(min_norm, color="green", linestyle="--", linewidth=1.5)
+            ax.axhline(max_norm, color="green", linestyle="--", linewidth=1.5)
 
-        ax.legend()
+        ax.grid(True, alpha=0.25)
         plt.tight_layout()
 
-        # Wstaw wykres
-        for child in self.chart_widget.children():
-            if hasattr(child, 'deleteLater'):
-                child.deleteLater()
+        # Wyczyść poprzedni wykres z chart_widget
+        layout = self.chart_widget.layout()
+        if layout is None:
+            layout = QVBoxLayout(self.chart_widget)
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
 
-        canvas = FigureCanvas(fig)  # ← POPRAWNE!
-        layout = QVBoxLayout(self.chart_widget)
+        canvas = FigureCanvas(fig)
         layout.addWidget(canvas)
 
         self.view_stack.setVisible(False)
