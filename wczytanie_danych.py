@@ -948,6 +948,7 @@ class MainWindow(QMainWindow):
                     )
                     grp2 = grp2.loc[score.index]
 
+                self.last_export_df = grp2.reset_index()
                 grp2.plot(kind="bar", ax=ax)  # grouped bars dla 2 kolumn [web:489]
                 ax.set_title(title or f"Słupkowy ({agg}): porównanie oczu wg {x_col}")
                 ax.set_xlabel(xlabel or x_col)
@@ -982,6 +983,7 @@ class MainWindow(QMainWindow):
                         return
 
                     pvt = _apply_topn_and_sort(pvt)
+                    self.last_export_df = pvt.reset_index()
                     pvt.plot(kind="bar", ax=ax)
                     ax.legend(title=g_col)
 
@@ -989,6 +991,7 @@ class MainWindow(QMainWindow):
                     grp = dfp.groupby(x_col, dropna=False)[y_col].agg(agg)
                     grp = grp.sort_values(ascending=False)
                     grp = grp.head(topn)
+                    self.last_export_df = grp.reset_index(name=y_col)
                     grp.plot(kind="bar", ax=ax)
 
                 ax.set_title(title or f"Słupkowy ({agg}): {y_col} wg {x_col}")
@@ -1013,6 +1016,7 @@ class MainWindow(QMainWindow):
             if w is not None:
                 w.deleteLater()
 
+        self.last_fig = fig
         canvas = FigureCanvas(fig)
         self.chart_layout.addWidget(canvas)
 
