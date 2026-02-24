@@ -504,6 +504,15 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.view_stack, stretch=1)
         # Miejsce na wykres (ukryte na start)
         self.chart_widget = QWidget()
+        # przycisk powrotu z widoku wykresu
+        self.btn_back_from_chart = QPushButton("Wróć do danych")
+        self.btn_back_from_chart.clicked.connect(self.close_chart_view)
+        self.btn_back_from_chart.setVisible(False)
+
+        # stały layout dla chart_widget (żeby nie tworzyć go w kółko)
+        self.chart_layout = QVBoxLayout(self.chart_widget)
+        self.chart_layout.addWidget(self.btn_back_from_chart)
+
         self.chart_widget.setVisible(False)
         right_layout.addWidget(self.chart_widget, stretch=1)
 
@@ -883,6 +892,7 @@ class MainWindow(QMainWindow):
 
         plt.ioff()
         fig, ax = plt.subplots(figsize=(10, 6))
+        chart_done = False
 
         # helper: sortowanie i topN (po sumie/średniej po kolumnach)
         def _apply_topn_and_sort(pvt: pd.DataFrame) -> pd.DataFrame:
@@ -947,60 +957,43 @@ class MainWindow(QMainWindow):
                 ax.grid(True, alpha=0.25)
                 plt.tight_layout()
 
-                # --- WSTAW CANVAS I POKAŻ WYKRES ---
-                layout = self.chart_widget.layout()
-                if layout is None:
-                    layout = QVBoxLayout(self.chart_widget)
-                while layout.count():
-                    item = layout.takeAt(0)
-                    w = item.widget()
-                    if w is not None:
-                        w.deleteLater()
-
-                canvas = FigureCanvas(fig)
-                layout.addWidget(canvas)
-
-                self.view_stack.setVisible(False)
-                self.chart_widget.setVisible(True)
-
-                plt.close(fig)  # żeby nie otwierać 20+ figur
-
-                return
+                # kończymy logikę słupkowego tutaj – reszta (wstawienie do UI) zrobi się na końcu funkcji
+                chart_done = True
 
             # --- KONIEC PORÓWNANIA OCZU ---
-
-            if g_col == x_col:
-                print("Grupuj po nie może być takie samo jak X:", g_col)
-                return
+            if not chart_done:
+                if g_col == x_col:
+                    print("Grupuj po nie może być takie samo jak X:", g_col)
+                    return
 
             # pivot_table daje automatyczne grupy i agregację [web:465]
-            if g_col:
-                try:
-                    dfp[y_col] = pd.to_numeric(dfp[y_col], errors="coerce")
-                    pvt = pd.pivot_table(dfp, values=y_col, index=x_col, columns=g_col, aggfunc=agg)
-                    print("pivot_table OK, shape:", pvt.shape)
-                    print(pvt.head(3))
-                except Exception as e:
-                    print("BŁĄD pivot_table:", type(e).__name__, e)
-                    return
+                if g_col:
+                    try:
+                        dfp[y_col] = pd.to_numeric(dfp[y_col], errors="coerce")
+                        pvt = pd.pivot_table(dfp, values=y_col, index=x_col, columns=g_col, aggfunc=agg)
+                        print("pivot_table OK, shape:", pvt.shape)
+                        print(pvt.head(3))
+                    except Exception as e:
+                        print("BŁĄD pivot_table:", type(e).__name__, e)
+                        return
 
-                if pvt.empty:
-                    print("pivot_table puste (brak danych po agregacji)")
-                    return
+                    if pvt.empty:
+                        print("pivot_table puste (brak danych po agregacji)")
+                        return
 
-                pvt = _apply_topn_and_sort(pvt)
-                pvt.plot(kind="bar", ax=ax)
-                ax.legend(title=g_col)
+                    pvt = _apply_topn_and_sort(pvt)
+                    pvt.plot(kind="bar", ax=ax)
+                    ax.legend(title=g_col)
 
-            else:
-                grp = dfp.groupby(x_col, dropna=False)[y_col].agg(agg)
-                grp = grp.sort_values(ascending=False)
-                grp = grp.head(topn)
-                grp.plot(kind="bar", ax=ax)
+                else:
+                    grp = dfp.groupby(x_col, dropna=False)[y_col].agg(agg)
+                    grp = grp.sort_values(ascending=False)
+                    grp = grp.head(topn)
+                    grp.plot(kind="bar", ax=ax)
 
-            ax.set_title(title or f"Słupkowy ({agg}): {y_col} wg {x_col}")
-            ax.set_xlabel(xlabel or x_col)
-            ax.set_ylabel(ylabel or f"{agg}({y_col})")
+                ax.set_title(title or f"Słupkowy ({agg}): {y_col} wg {x_col}")
+                ax.set_xlabel(xlabel or x_col)
+                ax.set_ylabel(ylabel or f"{agg}({y_col})")
 
         # NORMA jako pas (tylko gdy Y jest na osi Y)
         if self.chk_wiz_norma.isChecked() and y_col:
@@ -1013,21 +1006,33 @@ class MainWindow(QMainWindow):
         ax.grid(True, alpha=0.25)
         plt.tight_layout()
 
-        # Wyczyść poprzedni wykres z chart_widget
-        layout = self.chart_widget.layout()
-        if layout is None:
-            layout = QVBoxLayout(self.chart_widget)
-        while layout.count():
-            item = layout.takeAt(0)
+        # Wyczyść poprzedni wykres (zostaw przycisk "Wróć" jako pierwszy element)
+        while self.chart_layout.count() > 1:
+            item = self.chart_layout.takeAt(1)
             w = item.widget()
             if w is not None:
                 w.deleteLater()
 
         canvas = FigureCanvas(fig)
-        layout.addWidget(canvas)
+        self.chart_layout.addWidget(canvas)
 
         self.view_stack.setVisible(False)
         self.chart_widget.setVisible(True)
+        self.btn_back_from_chart.setVisible(True)
+
+        plt.close(fig)
+
+    def close_chart_view(self):
+        # usuń wszystko z layoutu oprócz przycisku "Wróć"
+        while self.chart_layout.count() > 1:
+            item = self.chart_layout.takeAt(1)  # 0 = przycisk
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+        self.chart_widget.setVisible(False)
+        self.view_stack.setVisible(True)
+        self.btn_back_from_chart.setVisible(False)
 
 
 if __name__ == "__main__":
