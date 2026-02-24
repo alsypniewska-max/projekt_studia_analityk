@@ -378,7 +378,7 @@ class MainWindow(QMainWindow):
         self.norma_filter_layout.addWidget(self.chk_norma_nizej)
         self.norma_filter_layout.addWidget(self.chk_norma_wyzej)
         self.norma_filter_widget.setVisible(False)
-        self.scroll_layout.addWidget(self.norma_filter_widget)  # DODAJ tutaj
+        self.scroll_layout.addWidget(self.norma_filter_widget)
 
         # Przycisk Statystyka (toggle: on/off)
         self.btn_statystyka = QPushButton("Statystyka")
