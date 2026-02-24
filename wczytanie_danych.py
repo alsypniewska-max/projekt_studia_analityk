@@ -512,6 +512,22 @@ class MainWindow(QMainWindow):
         # stały layout dla chart_widget (żeby nie tworzyć go w kółko)
         self.chart_layout = QVBoxLayout(self.chart_widget)
         self.chart_layout.addWidget(self.btn_back_from_chart)
+        # --- przyciski eksportu (ręczne) ---
+        self.btn_save_png = QPushButton("Zapisz wykres PNG")
+        self.btn_save_pdf = QPushButton("Zapisz wykres PDF")
+        self.btn_save_csv = QPushButton("Zapisz dane (CSV)")
+
+        self.btn_save_png.clicked.connect(self.export_chart_png)
+        self.btn_save_pdf.clicked.connect(self.export_chart_pdf)
+        self.btn_save_csv.clicked.connect(self.export_data_csv)
+
+        self.btn_save_png.setVisible(False)
+        self.btn_save_pdf.setVisible(False)
+        self.btn_save_csv.setVisible(False)
+
+        self.chart_layout.addWidget(self.btn_save_png)
+        self.chart_layout.addWidget(self.btn_save_pdf)
+        self.chart_layout.addWidget(self.btn_save_csv)
 
         self.chart_widget.setVisible(False)
         right_layout.addWidget(self.chart_widget, stretch=1)
@@ -1023,6 +1039,9 @@ class MainWindow(QMainWindow):
         self.view_stack.setVisible(False)
         self.chart_widget.setVisible(True)
         self.btn_back_from_chart.setVisible(True)
+        self.btn_save_png.setVisible(True)
+        self.btn_save_pdf.setVisible(True)
+        self.btn_save_csv.setVisible(True)
 
         plt.close(fig)
 
@@ -1037,6 +1056,39 @@ class MainWindow(QMainWindow):
         self.chart_widget.setVisible(False)
         self.view_stack.setVisible(True)
         self.btn_back_from_chart.setVisible(False)
+
+    def export_chart_png(self):
+        fig = getattr(self, "last_fig", None)
+        if fig is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Zapisz wykres jako PNG", "", "PNG (*.png)")
+        if not path:
+            return
+        if not path.lower().endswith(".png"):
+            path += ".png"
+        fig.savefig(path, dpi=200, bbox_inches="tight")
+
+    def export_chart_pdf(self):
+        fig = getattr(self, "last_fig", None)
+        if fig is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Zapisz wykres jako PDF", "", "PDF (*.pdf)")
+        if not path:
+            return
+        if not path.lower().endswith(".pdf"):
+            path += ".pdf"
+        fig.savefig(path, bbox_inches="tight")
+
+    def export_data_csv(self):
+        df = getattr(self, "last_export_df", None)
+        if df is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Zapisz dane jako CSV", "", "CSV (*.csv)")
+        if not path:
+            return
+        if not path.lower().endswith(".csv"):
+            path += ".csv"
+        df.to_csv(path, index=False, encoding="utf-8-sig")
 
 
 if __name__ == "__main__":
