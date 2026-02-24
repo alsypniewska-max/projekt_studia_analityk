@@ -503,31 +503,43 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.stats_bar)
         right_layout.addWidget(self.view_stack, stretch=1)
         # Miejsce na wykres (ukryte na start)
+
         self.chart_widget = QWidget()
-        # przycisk powrotu z widoku wykresu
+
+        # główny layout widoku wykresu
+        self.chart_layout = QVBoxLayout(self.chart_widget)
+
+        # pasek przycisków nad wykresem (NIGDY nie czyścimy tego layoutu)
+        self.chart_toolbar = QHBoxLayout()
+        self.chart_layout.addLayout(self.chart_toolbar)
+
         self.btn_back_from_chart = QPushButton("Wróć do danych")
         self.btn_back_from_chart.clicked.connect(self.close_chart_view)
-        self.btn_back_from_chart.setVisible(False)
+        self.chart_toolbar.addWidget(self.btn_back_from_chart)
 
-        # stały layout dla chart_widget (żeby nie tworzyć go w kółko)
-        self.chart_layout = QVBoxLayout(self.chart_widget)
-        self.chart_layout.addWidget(self.btn_back_from_chart)
-        # --- przyciski eksportu (ręczne) ---
-        self.btn_save_png = QPushButton("Zapisz wykres PNG")
-        self.btn_save_pdf = QPushButton("Zapisz wykres PDF")
-        self.btn_save_csv = QPushButton("Zapisz dane (CSV)")
+        self.btn_save_png = QPushButton("Zapisz PNG")
+        self.btn_save_pdf = QPushButton("Zapisz PDF")
+        self.btn_save_csv = QPushButton("Zapisz CSV")
 
         self.btn_save_png.clicked.connect(self.export_chart_png)
         self.btn_save_pdf.clicked.connect(self.export_chart_pdf)
         self.btn_save_csv.clicked.connect(self.export_data_csv)
 
+        self.chart_toolbar.addWidget(self.btn_save_png)
+        self.chart_toolbar.addWidget(self.btn_save_pdf)
+        self.chart_toolbar.addWidget(self.btn_save_csv)
+        self.chart_toolbar.addStretch(1)
+
+        # kontener na canvas (TU będzie FigureCanvas, to tylko to będziemy czyścić)
+        self.chart_canvas_container = QWidget()
+        self.chart_canvas_layout = QVBoxLayout(self.chart_canvas_container)
+        self.chart_layout.addWidget(self.chart_canvas_container)
+
+        # startowo ukryte przyciski
+        self.btn_back_from_chart.setVisible(False)
         self.btn_save_png.setVisible(False)
         self.btn_save_pdf.setVisible(False)
         self.btn_save_csv.setVisible(False)
-
-        self.chart_layout.addWidget(self.btn_save_png)
-        self.chart_layout.addWidget(self.btn_save_pdf)
-        self.chart_layout.addWidget(self.btn_save_csv)
 
         self.chart_widget.setVisible(False)
         right_layout.addWidget(self.chart_widget, stretch=1)
@@ -1025,38 +1037,53 @@ class MainWindow(QMainWindow):
         ax.grid(True, alpha=0.25)
         plt.tight_layout()
 
-        # Wyczyść poprzedni wykres (zostaw przycisk "Wróć" jako pierwszy element)
-        while self.chart_layout.count() > 1:
-            item = self.chart_layout.takeAt(1)
+        # NORMA jako pas (tylko gdy Y jest na osi Y)
+        if self.chk_wiz_norma.isChecked() and y_col:
+            min_norm = self.spin_norma_min.value()
+            max_norm = self.spin_norma_max.value()
+            ax.axhspan(min_norm, max_norm, alpha=0.15, color="green", label=f"Norma [{min_norm}-{max_norm}]")
+            ax.axhline(min_norm, color="green", linestyle="--", linewidth=1.5)
+            ax.axhline(max_norm, color="green", linestyle="--", linewidth=1.5)
+
+        ax.grid(True, alpha=0.25)
+        plt.tight_layout()
+
+        # zapamiętaj wykres do eksportu
+        self.last_fig = fig
+
+        # wyczyść poprzedni canvas (NIE ruszamy paska przycisków)
+        while self.chart_canvas_layout.count():
+            item = self.chart_canvas_layout.takeAt(0)
             w = item.widget()
             if w is not None:
                 w.deleteLater()
 
-        self.last_fig = fig
         canvas = FigureCanvas(fig)
-        self.chart_layout.addWidget(canvas)
+        self.chart_canvas_layout.addWidget(canvas)
 
         self.view_stack.setVisible(False)
-        print("CHART_WIDGET ID:", id(self.chart_widget))
         self.chart_widget.setVisible(True)
+
         self.btn_back_from_chart.setVisible(True)
         self.btn_save_png.setVisible(True)
         self.btn_save_pdf.setVisible(True)
         self.btn_save_csv.setVisible(True)
 
-        plt.close(fig)
-
     def close_chart_view(self):
-        # usuń wszystko z layoutu oprócz przycisku "Wróć"
-        while self.chart_layout.count() > 1:
-            item = self.chart_layout.takeAt(1)  # 0 = przycisk
+        # usuń tylko canvasy z kontenera (toolbar z przyciskami zostaje)
+        while self.chart_canvas_layout.count():
+            item = self.chart_canvas_layout.takeAt(0)
             w = item.widget()
             if w is not None:
                 w.deleteLater()
 
         self.chart_widget.setVisible(False)
         self.view_stack.setVisible(True)
+
         self.btn_back_from_chart.setVisible(False)
+        self.btn_save_png.setVisible(False)
+        self.btn_save_pdf.setVisible(False)
+        self.btn_save_csv.setVisible(False)
 
     def export_chart_png(self):
         fig = getattr(self, "last_fig", None)
