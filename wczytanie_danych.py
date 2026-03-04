@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
 
         # NOWE: Główny VBOX z splitterem
         main_layout = QVBoxLayout(central_widget)
-        self.splitter = QSplitter(Qt.Orientation.Vertical)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # LEWA KOLUMNA 350px
         left_widget = QWidget()
@@ -533,15 +533,12 @@ class MainWindow(QMainWindow):
 
         self.btn_save_png = QPushButton("Zapisz PNG")
         self.btn_save_pdf = QPushButton("Zapisz PDF")
-        self.btn_save_csv = QPushButton("Zapisz CSV")
 
         self.btn_save_png.clicked.connect(self.export_chart_png)
         self.btn_save_pdf.clicked.connect(self.export_chart_pdf)
-        self.btn_save_csv.clicked.connect(self.export_data_csv)
 
         self.chart_toolbar.addWidget(self.btn_save_png)
         self.chart_toolbar.addWidget(self.btn_save_pdf)
-        self.chart_toolbar.addWidget(self.btn_save_csv)
         self.chart_toolbar.addStretch(1)
 
         # kontener na canvas (TU będzie FigureCanvas, to tylko to będziemy czyścić)
@@ -553,16 +550,16 @@ class MainWindow(QMainWindow):
         self.btn_back_from_chart.setVisible(False)
         self.btn_save_png.setVisible(False)
         self.btn_save_pdf.setVisible(False)
-        self.btn_save_csv.setVisible(False)
 
         self.chart_widget.setVisible(False)
-        right_layout.addWidget(self.chart_widget, stretch=1)
+        right_layout.addWidget(self.chart_widget, stretch=0)
 
         # obie kolumny do splittera + log na dole (jedyny blok!)
         self.splitter.addWidget(right_widget)
         main_layout.addWidget(self.splitter)
         main_layout.addWidget(self.log_widget)
         self.splitter.setSizes([350, 1000])  # lewa mała, prawa duża
+        self.splitter.setStretchFactor(1, 1)
 
     def import_csv_and_refresh(self):
         global current_df, current_file_path
@@ -1082,17 +1079,6 @@ class MainWindow(QMainWindow):
         ax.grid(True, alpha=0.25)
         plt.tight_layout()
 
-        # NORMA jako pas (tylko gdy Y jest na osi Y)
-        if self.chk_wiz_norma.isChecked() and y_col:
-            min_norm = self.spin_norma_min.value()
-            max_norm = self.spin_norma_max.value()
-            ax.axhspan(min_norm, max_norm, alpha=0.15, color="green", label=f"Norma [{min_norm}-{max_norm}]")
-            ax.axhline(min_norm, color="green", linestyle="--", linewidth=1.5)
-            ax.axhline(max_norm, color="green", linestyle="--", linewidth=1.5)
-
-        ax.grid(True, alpha=0.25)
-        plt.tight_layout()
-
         # zapamiętaj wykres do eksportu
         self.last_fig = fig
 
@@ -1107,13 +1093,13 @@ class MainWindow(QMainWindow):
         self.chart_canvas_layout.addWidget(canvas)
 
         self.view_stack.setVisible(False)
-        self.log("✓ Wykres narysowany – użyj przycisków eksportu")
         self.chart_widget.setVisible(True)
+        self.splitter.setSizes([350, 1000])  # NOWE: zostaw lewą 350, prawa max
+        self.log("✓ Wykres narysowany – użyj przycisków eksportu")
 
         self.btn_back_from_chart.setVisible(True)
         self.btn_save_png.setVisible(True)
         self.btn_save_pdf.setVisible(True)
-        self.btn_save_csv.setVisible(True)
 
     def close_chart_view(self):
         # usuń tylko canvasy z kontenera (toolbar z przyciskami zostaje)
@@ -1125,11 +1111,11 @@ class MainWindow(QMainWindow):
 
         self.chart_widget.setVisible(False)
         self.view_stack.setVisible(True)
+        self.view_stack.setCurrentIndex(0)  # NOWE: zawsze wracaj do tabeli
 
         self.btn_back_from_chart.setVisible(False)
         self.btn_save_png.setVisible(False)
         self.btn_save_pdf.setVisible(False)
-        self.btn_save_csv.setVisible(False)
 
     def export_chart_png(self):
         fig = getattr(self, "last_fig", None)
