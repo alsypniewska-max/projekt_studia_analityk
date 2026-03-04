@@ -175,7 +175,7 @@ class MainWindow(QMainWindow):
         self.log_widget = QPlainTextEdit(self)
         self.log_widget.setReadOnly(True)
         self.log_widget.setMaximumHeight(120)
-        self.log_widget.setStyleSheet("font-family: monospace; font-size: 10pt;")
+        self.log_widget.setStyleSheet("font-family: 'Courier New', Consolas, monospace; font-size: 10pt;")
         self.log_widget.appendPlainText("[START] Aplikacja uruchomiona")
 
         self.setWindowTitle("Wczytaj dane - Filtry i podgląd")
@@ -183,7 +183,10 @@ class MainWindow(QMainWindow):
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
+
+        # NOWE: Główny VBOX z splitterem
+        main_layout = QVBoxLayout(central_widget)
+        splitter = QSplitter(Qt.Orientation.Vertical)
 
         # LEWA KOLUMNA 350px
         left_widget = QWidget()
@@ -289,7 +292,8 @@ class MainWindow(QMainWindow):
         wiz_row1 = QHBoxLayout()
         self.chk_wizualizacja = QCheckBox("WIZUALIZACJA")
         self.btn_wizualizuj = QPushButton("Narysuj")
-        self.btn_wizualizuj.clicked.connect(lambda: [self.log("Uruchamiam wizualizację"), self.run_visualization()])        wiz_row1.addWidget(self.chk_wizualizacja)
+        self.btn_wizualizuj.clicked.connect(lambda: [self.log("Uruchamiam wizualizację"), self.run_visualization()])
+        wiz_row1.addWidget(self.chk_wizualizacja)
         wiz_row1.addStretch(1)
         wiz_row1.addWidget(self.btn_wizualizuj)
         wiz_layout.addLayout(wiz_row1)
@@ -420,7 +424,7 @@ class MainWindow(QMainWindow):
 
         # WAŻNE: dokończenie layoutu lewej kolumny
         left_layout.addStretch()
-        main_layout.addWidget(left_widget, stretch=0)
+        splitter.addWidget(left_widget)  # NOWE: lewa do splittera
 
         # PRAWY: Kontener (pasek statystyk nad tabelą + stos widoków)
         right_widget = QWidget()
@@ -551,7 +555,10 @@ class MainWindow(QMainWindow):
         self.chart_widget.setVisible(False)
         right_layout.addWidget(self.chart_widget, stretch=1)
 
-        main_layout.addWidget(right_widget, stretch=1)
+        # NOWE: obie kolumny do splittera + log na dole
+        splitter.addWidget(right_widget)
+        main_layout.addWidget(splitter)
+        main_layout.addWidget(self.log_widget)
 
         main_layout.addWidget(right_widget, stretch=1)
         # NOWE: LOG NA DOLE OKNA (tu wklej)
