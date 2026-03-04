@@ -580,6 +580,15 @@ class MainWindow(QMainWindow):
             self.log(f"Kolumny: {list(current_df.columns)}")
             self.create_dynamic_filters()
             self.update_norma_controls()
+            # Uzupełnij comboboksy wizualizacji/oczu kolumnami z DF
+            cols_all = [""] + [str(c) for c in current_df.columns]
+
+            for cb in (self.cmb_wiz_x, self.cmb_wiz_y, self.cmb_wiz_group, self.cmb_eye_left, self.cmb_eye_right):
+                cb.blockSignals(True)
+                cb.clear()
+                cb.addItems(cols_all)
+                cb.blockSignals(False)
+
             self.update_table()  # odśwież tabelę + filtry
             self.log("Gotowe – dane załadowane")
         except Exception as e:
