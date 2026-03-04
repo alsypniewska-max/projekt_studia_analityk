@@ -4,18 +4,16 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QPushButton, QMenu, QScrollArea, QTableWidget, QTableWidgetItem,
     QLabel, QCheckBox, QComboBox, QSpinBox, QStackedWidget, QFileDialog,
-    QDoubleSpinBox, QLineEdit
+    QDoubleSpinBox, QLineEdit, QPlainTextEdit, QSplitter
 )
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import (QTimer, Qt)
 
-# Matplotlib POPRAWNE dla PyQt6
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-
+from datetime import datetime
 import pandas as pd
 import numpy as np
-
 
 current_file_path = None
 current_df = None
@@ -172,6 +170,14 @@ def podglad_danych():
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+
+        # NOWE: LOG WIDGET (tu wklej)
+        self.log_widget = QPlainTextEdit(self)
+        self.log_widget.setReadOnly(True)
+        self.log_widget.setMaximumHeight(120)
+        self.log_widget.setStyleSheet("font-family: monospace; font-size: 10pt;")
+        self.log_widget.appendPlainText("[START] Aplikacja uruchomiona")
+
         self.setWindowTitle("Wczytaj dane - Filtry i podgląd")
         self.setMinimumSize(1400, 800)
 
@@ -195,10 +201,12 @@ class MainWindow(QMainWindow):
         action_sql.triggered.connect(import_sql)
 
         self.btn_wczytaj.setMenu(menu)
+        self.btn_wczytaj.clicked.connect(lambda: self.log("Kliknięto Wczytaj – wybierz menu"))
         left_layout.addWidget(self.btn_wczytaj)
 
         self.btn_podglad = QPushButton("Podgląd danych")
-        self.btn_podglad.clicked.connect(self.update_table)
+        self.btn_podglad.clicked.connect(lambda: [self.log("Odświeżam podgląd tabeli"), self.update_table()])
+
         left_layout.addWidget(self.btn_podglad)
 
         # ScrollArea na dynamiczne filtry
@@ -216,7 +224,7 @@ class MainWindow(QMainWindow):
 
         # Przycisk Filtruj i wyświetl
         self.btn_filtruj = QPushButton("Filtruj i wyświetl")
-        self.btn_filtruj.clicked.connect(self.update_table)
+        self.btn_filtruj.clicked.connect(lambda: [self.log("Zastosowano filtry"), self.update_table()])
         self.btn_filtruj.setStyleSheet(
             "background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;"
         )
@@ -281,8 +289,7 @@ class MainWindow(QMainWindow):
         wiz_row1 = QHBoxLayout()
         self.chk_wizualizacja = QCheckBox("WIZUALIZACJA")
         self.btn_wizualizuj = QPushButton("Narysuj")
-        self.btn_wizualizuj.clicked.connect(self.run_visualization)
-        wiz_row1.addWidget(self.chk_wizualizacja)
+        self.btn_wizualizuj.clicked.connect(lambda: [self.log("Uruchamiam wizualizację"), self.run_visualization()])        wiz_row1.addWidget(self.chk_wizualizacja)
         wiz_row1.addStretch(1)
         wiz_row1.addWidget(self.btn_wizualizuj)
         wiz_layout.addLayout(wiz_row1)
@@ -546,13 +553,30 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(right_widget, stretch=1)
 
+        main_layout.addWidget(right_widget, stretch=1)
+        # NOWE: LOG NA DOLE OKNA (tu wklej)
+        main_layout.addWidget(self.log_widget)
+
     def import_csv_and_refresh(self):
-        import_csv()
-        self.create_dynamic_filters()
-        self.refresh_stats_controls()
-        self.update_norma_controls()
-        QTimer.singleShot(100, self.update_table)
-        self.update_wizualizacja_controls()
+        global current_df, current_file_path
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Wybierz plik CSV", ".",
+            "CSV files (*.csv);;All files (*)"
+        )
+        if not file_path:
+            self.log("Anulowano wybór pliku")
+            return
+
+        try:
+            self.log(f"Wczytuję: {file_path}")
+            current_df = pd.read_csv(file_path)
+            current_file_path = file_path
+            self.log(f"✓ CSV wczytany: {current_df.shape[0]} wierszy, {current_df.shape[1]} kolumn")
+            self.log(f"Kolumny: {list(current_df.columns)}")
+            self.populate_filters()  # jeśli masz funkcję odświeżającą combobox
+            self.update_table()
+        except Exception as e:
+            self.log(f"✗ BŁĄD CSV: {e}")
 
     def create_dynamic_filters(self):
         global current_df
@@ -887,6 +911,13 @@ class MainWindow(QMainWindow):
     def run_visualization(self):
         global current_df
         if current_df is None:
+            self.log("Brak danych – najpierw wczytaj CSV")
+            return
+
+        self.log("Rozpoczynam wizualizację...")
+        dfp = zastosuj_filtry(current_df, self)
+        if dfp.empty:
+            self.log("Brak danych po filtrach")
             return
 
         # 1) ZAWSZE bierzemy dane po filtrach (koty/psy/itd.)
@@ -1062,6 +1093,7 @@ class MainWindow(QMainWindow):
         self.chart_canvas_layout.addWidget(canvas)
 
         self.view_stack.setVisible(False)
+        self.log("✓ Wykres narysowany – użyj przycisków eksportu")
         self.chart_widget.setVisible(True)
 
         self.btn_back_from_chart.setVisible(True)
@@ -1117,6 +1149,16 @@ class MainWindow(QMainWindow):
         if not path.lower().endswith(".csv"):
             path += ".csv"
         df.to_csv(path, index=False, encoding="utf-8-sig")
+
+    def log(self, message: str):
+        """Log systemowy z timestamp"""
+        from datetime import datetime
+        ts = datetime.now().strftime("%H:%M:%S")
+        line = f"[{ts}] {message}"
+        self.log_widget.appendPlainText(line)
+        self.log_widget.verticalScrollBar().setValue(self.log_widget.verticalScrollBar().maximum())
+        # echo w status bar (jeśli chcesz)
+        self.statusBar().showMessage(message, 3000)
 
 
 if __name__ == "__main__":
