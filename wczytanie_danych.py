@@ -170,6 +170,7 @@ def podglad_danych():
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.statusBar().deleteLater()
 
         # NOWE: LOG WIDGET (tu wklej)
         self.log_widget = QPlainTextEdit(self)
@@ -505,7 +506,9 @@ class MainWindow(QMainWindow):
 
         self.view_stack = QStackedWidget()
         self.view_stack.addWidget(self.table)  # index 0: dane
+        self.view_stack.setCurrentIndex(0)  # NOWE: start z tabelą
         self.view_stack.addWidget(self.stats_table)  # index 1: statystyka
+
         self.view_stack.setCurrentIndex(0)
 
         # Dynamiczne checkboxy kategorii
@@ -555,14 +558,11 @@ class MainWindow(QMainWindow):
         self.chart_widget.setVisible(False)
         right_layout.addWidget(self.chart_widget, stretch=1)
 
-        # NOWE: obie kolumny do splittera + log na dole
+        # obie kolumny do splittera + log na dole (jedyny blok!)
         splitter.addWidget(right_widget)
         main_layout.addWidget(splitter)
         main_layout.addWidget(self.log_widget)
-
-        main_layout.addWidget(right_widget, stretch=1)
-        # NOWE: LOG NA DOLE OKNA (tu wklej)
-        main_layout.addWidget(self.log_widget)
+        splitter.setSizes([350, 1000])  # lewa mała, prawa duża
 
     def import_csv_and_refresh(self):
         global current_df, current_file_path
@@ -700,6 +700,13 @@ class MainWindow(QMainWindow):
 
         if self.btn_statystyka.isChecked():
             self.refresh_stats_controls()
+
+        # NOWE: Upewnij się tabela widoczna
+        self.view_stack.setCurrentIndex(0)
+        self.view_stack.setVisible(True)
+        self.chart_widget.setVisible(False)
+        splitter.setSizes([350, 1000])
+        self.log("✓ Tabela odświeżona")
 
     def clear_layout(self, layout):
         while layout.count():
