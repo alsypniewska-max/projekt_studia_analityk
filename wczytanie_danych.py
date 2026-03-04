@@ -40,6 +40,7 @@ def import_csv():
 
     current_file_path = file_path
     current_df = pd.read_csv(file_path)
+
     print(f"Wybrano plik CSV: {current_df.shape}")
 
     # WAŻNE: nie wywołuj tu window.create_dynamic_filters()
@@ -577,6 +578,8 @@ class MainWindow(QMainWindow):
             current_file_path = file_path
             self.log(f"✓ CSV wczytany: {current_df.shape[0]} wierszy, {current_df.shape[1]} kolumn")
             self.log(f"Kolumny: {list(current_df.columns)}")
+            self.create_dynamic_filters()
+            self.update_norma_controls()
             self.update_table()  # odśwież tabelę + filtry
             self.log("Gotowe – dane załadowane")
         except Exception as e:
@@ -663,6 +666,7 @@ class MainWindow(QMainWindow):
                 self.filter_widgets[col] = {"chk": chk, "combo": combo}
 
             self.scroll_layout.addLayout(row)
+        self.scroll_layout.addStretch(1)
 
     def update_table(self):
         global current_df
@@ -868,13 +872,24 @@ class MainWindow(QMainWindow):
             self.cmb_norma_kol2.clear()
             return
 
-        num_cols = [c for c in current_df.columns if pd.api.types.is_numeric_dtype(current_df[c])]
+        num_cols = []
+        for c in current_df.columns:
+            s = current_df[c]
+            # szybka próba konwersji: przecinek->kropka, wywal spacje, zamień na liczby
+            s2 = pd.to_numeric(
+                s.astype(str).str.replace(" ", "", regex=False).str.replace(",", ".", regex=False),
+                errors="coerce"
+            )
+            # uznaj kolumnę za "liczbową", jeśli choć np. 60% wierszy da się zrzutować
+            if s2.notna().mean() >= 0.60:
+                num_cols.append(str(c))
+
         self.cmb_norma_kol1.blockSignals(True)
         self.cmb_norma_kol2.blockSignals(True)
         self.cmb_norma_kol1.clear()
         self.cmb_norma_kol2.clear()
-        self.cmb_norma_kol1.addItems(num_cols)
-        self.cmb_norma_kol2.addItems(num_cols)
+        self.cmb_norma_kol1.addItems([""] + num_cols)
+        self.cmb_norma_kol2.addItems([""] + num_cols)
         self.cmb_norma_kol1.blockSignals(False)
         self.cmb_norma_kol2.blockSignals(False)
 
