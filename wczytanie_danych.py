@@ -4,10 +4,10 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QPushButton, QMenu, QScrollArea, QTableWidget, QTableWidgetItem,
     QLabel, QCheckBox, QComboBox, QSpinBox, QStackedWidget, QFileDialog,
-    QDoubleSpinBox, QLineEdit, QPlainTextEdit, QSplitter
+    QDoubleSpinBox, QLineEdit, QPlainTextEdit, QSplitter, QDialog
 )
 from PyQt6.QtCore import (QTimer, Qt)
-
+from PyQt6.QtGui import QPixmap
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -202,7 +202,7 @@ class MainWindow(QMainWindow):
         action_csv.triggered.connect(self.import_csv_and_refresh)
 
         action_sql = menu.addAction("Import z bazy SQL")
-        action_sql.triggered.connect(import_sql)
+        action_sql.triggered.connect(self.show_sql_unavailable_dialog)
 
         self.btn_wczytaj.setMenu(menu)
         self.btn_wczytaj.clicked.connect(lambda: self.log("Kliknięto Wczytaj – wybierz menu"))
@@ -1160,6 +1160,40 @@ class MainWindow(QMainWindow):
         # echo w status bar (jeśli chcesz)
         self.statusBar().showMessage(message, 3000)
 
+    def show_sql_unavailable_dialog(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Import z bazy SQL")
+        dlg.setModal(True)
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        lbl = QLabel("Opcja tymczasowo niedostępna. Przepraszamy za utrudnienia.")
+        lbl.setWordWrap(True)
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(lbl)
+
+        img_label = QLabel()
+        img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        import os
+        img_path = os.path.join(os.path.dirname(__file__), "importsql.jpg")
+        pix = QPixmap(img_path)
+
+        if not pix.isNull():
+            pix = pix.scaledToWidth(420, Qt.TransformationMode.SmoothTransformation)
+            img_label.setPixmap(pix)
+        else:
+            img_label.setText(f"(Nie znaleziono obrazka: {img_path})")
+
+        layout.addWidget(img_label)
+
+        btn_close = QPushButton("Zamknij")
+        btn_close.clicked.connect(dlg.accept)
+        layout.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        dlg.exec()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
