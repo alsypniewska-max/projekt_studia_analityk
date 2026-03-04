@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
 
         # NOWE: Główny VBOX z splitterem
         main_layout = QVBoxLayout(central_widget)
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        self.splitter = QSplitter(Qt.Orientation.Vertical)
 
         # LEWA KOLUMNA 350px
         left_widget = QWidget()
@@ -425,7 +425,7 @@ class MainWindow(QMainWindow):
 
         # WAŻNE: dokończenie layoutu lewej kolumny
         left_layout.addStretch()
-        splitter.addWidget(left_widget)  # NOWE: lewa do splittera
+        self.splitter.addWidget(left_widget)  # NOWE: lewa do splittera
 
         # PRAWY: Kontener (pasek statystyk nad tabelą + stos widoków)
         right_widget = QWidget()
@@ -559,10 +559,10 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.chart_widget, stretch=1)
 
         # obie kolumny do splittera + log na dole (jedyny blok!)
-        splitter.addWidget(right_widget)
-        main_layout.addWidget(splitter)
+        self.splitter.addWidget(right_widget)
+        main_layout.addWidget(self.splitter)
         main_layout.addWidget(self.log_widget)
-        splitter.setSizes([350, 1000])  # lewa mała, prawa duża
+        self.splitter.setSizes([350, 1000])  # lewa mała, prawa duża
 
     def import_csv_and_refresh(self):
         global current_df, current_file_path
@@ -580,8 +580,8 @@ class MainWindow(QMainWindow):
             current_file_path = file_path
             self.log(f"✓ CSV wczytany: {current_df.shape[0]} wierszy, {current_df.shape[1]} kolumn")
             self.log(f"Kolumny: {list(current_df.columns)}")
-            self.populate_filters()  # jeśli masz funkcję odświeżającą combobox
-            self.update_table()
+            self.update_table()  # odśwież tabelę + filtry
+            self.log("Gotowe – dane załadowane")
         except Exception as e:
             self.log(f"✗ BŁĄD CSV: {e}")
 
@@ -705,7 +705,7 @@ class MainWindow(QMainWindow):
         self.view_stack.setCurrentIndex(0)
         self.view_stack.setVisible(True)
         self.chart_widget.setVisible(False)
-        splitter.setSizes([350, 1000])
+        self.splitter.setSizes([350, 1000])
         self.log("✓ Tabela odświeżona")
 
     def clear_layout(self, layout):
