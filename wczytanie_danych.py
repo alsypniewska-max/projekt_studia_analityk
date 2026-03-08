@@ -786,7 +786,7 @@ class MainWindow(QMainWindow):
         return selected[0] if selected else None
 
     def get_filters_description(self) -> str:
-        """Opis filtrów na podstawie różnicy między current_df a df_po_filtrach."""
+        """Opis filtrów na podstawie różnic między current_df a df_po_filtrach (działa dla dowolnych kolumn)."""
         global current_df
         if current_df is None:
             return "Brak (current_df = None)"
@@ -796,24 +796,51 @@ class MainWindow(QMainWindow):
         except Exception:
             return "Nie udało się odczytać filtrów"
 
+        if len(df_filt) == 0:
+            return "Filtry: wynik pusty (0 wierszy)"
+
         if len(df_filt) == len(current_df):
             return "Brak (wszystkie dane)"
 
         desc = []
 
-        # Przykład: jeśli masz kolumnę 'gatunek' i po filtrze są tylko 1–2 wartości
-        for col in df_filt.columns:
-            unique_all = set(map(str, current_df[col].dropna().unique()))
-            unique_filt = set(map(str, df_filt[col].dropna().unique()))
-            if unique_filt != unique_all:
-                if len(unique_filt) == 1:
-                    val = next(iter(unique_filt))
-                    desc.append(f"{col} = {val}")
-                elif 1 < len(unique_filt) <= 4:
-                    vals = ", ".join(sorted(unique_filt))
-                    desc.append(f"{col} ∈ {{{vals}}}")
-                else:
-                    desc.append(f"{col}: ograniczony zbiór wartości ({len(unique_filt)} z {len(unique_all)})")
+        for col in current_df.columns:
+            s_all = current_df[col]
+            s_filt = df_filt[col]
+
+            # pomijamy kolumny kompletnie puste
+            if s_all.notna().sum() == 0:
+                continue
+
+            # jeśli liczba unikalnych wartości się nie zmieniła, filtr raczej nie działa po tej kolumnie
+            uniq_all = set(map(str, s_all.dropna().unique()))
+            uniq_filt = set(map(str, s_filt.dropna().unique()))
+            if uniq_all == uniq_filt:
+                continue
+
+            # NUMERYCZNE kolumny: opisz zakresem
+            try:
+                s_all_num = pd.to_numeric(s_all, errors="coerce")
+                s_filt_num = pd.to_numeric(s_filt, errors="coerce")
+                if s_filt_num.notna().sum() > 0 and s_all_num.notna().sum() > 0:
+                    min_all, max_all = float(s_all_num.min()), float(s_all_num.max())
+                    min_f, max_f = float(s_filt_num.min()), float(s_filt_num.max())
+                    # jeśli zakres się zawęził
+                    if (min_f > min_all) or (max_f < max_all):
+                        desc.append(f"{col} w zakresie [{min_f:g}–{max_f:g}]")
+                        continue  # nie rób już opisu po wartościach tekstowych
+            except Exception:
+                pass
+
+            # KATEGORYCZNE / tekstowe: opisz zbiorem wartości
+            if len(uniq_filt) == 1:
+                val = next(iter(uniq_filt))
+                desc.append(f"{col} = {val}")
+            elif 1 < len(uniq_filt) <= 5:
+                vals = ", ".join(sorted(uniq_filt))
+                desc.append(f"{col} ∈ {{{vals}}}")
+            else:
+                desc.append(f"{col}: ograniczony zbiór wartości ({len(uniq_filt)} z {len(uniq_all)})")
 
         if not desc:
             return "Filtry aktywne (zmieniona liczba wierszy), ale niejednoznaczne po wartościach"
@@ -915,9 +942,20 @@ class MainWindow(QMainWindow):
             ("Kolumna GRUPA", group_col or "brak"),
             ("Kolumna WARTOŚĆ", value_col or "brak"),
             ("Wierszy po filtrach", str(len(zastosuj_filtry(current_df, self)))),
-            ("Zastosowane filtry", self.get_filters_description()),
             ("Wybrane agregacje", agg_text),
         ]
+
+        # dodaj osobne wiersze dla każdego filtra
+        filters_text = self.get_filters_description()
+        if filters_text.startswith("Brak"):
+            meta_rows.append(("Zastosowane filtry", "Brak (wszystkie dane)"))
+        else:
+            # rozbij po średnikach na osobne filtry
+            for i, part in enumerate(filters_text.split("; ")):
+                if i == 0:
+                    meta_rows.append(("Zastosowane filtry", part))
+                else:
+                    meta_rows.append(("", part))
 
         # 2. Dane statystyczne z tabeli → DataFrame
         headers = [self.stats_table.horizontalHeaderItem(c).text()
@@ -1039,17 +1077,26 @@ class MainWindow(QMainWindow):
             agg_names.append("Maximum")
         agg_text = ", ".join(agg_names) if agg_names else "Brak"
 
+        filters_text = self.get_filters_description()
+        filter_lines = []
+        if filters_text.startswith("Brak"):
+            filter_lines = ["Filtry: Brak (wszystkie dane)"]
+        else:
+            parts = filters_text.split("; ")
+            filter_lines.append("Filtry:")
+            for p in parts:
+                filter_lines.append(f"  - {p}")
+
         meta_lines = [
-            f"RAPORT STATYSTYCZNY",
-            f"Data: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}",
-            f"Plik: {current_file_path.split('/')[-1]}",
-            f"GRUPA: {group_col or 'brak'}",
-            f"WARTOŚĆ: {value_col or 'brak'}",
-            f"Wierszy po filtrach: {len(zastosuj_filtry(current_df, self))}",
-            f"Filtry: {self.get_filters_description()}",
-            f"Wybrane agregacje: {agg_text}",
-            ""
-        ]
+                         f"RAPORT STATYSTYCZNY",
+                         f"Data: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}",
+                         f"Plik: {current_file_path.split('/')[-1]}",
+                         f"GRUPA: {group_col or 'brak'}",
+                         f"WARTOŚĆ: {value_col or 'brak'}",
+                         f"Wierszy po filtrach: {len(zastosuj_filtry(current_df, self))}",
+                         f"Wybrane agregacje: {agg_text}",
+                         ""
+                     ] + filter_lines + [""]
 
         # dane z tabeli statystyk
         rows = self.stats_table.rowCount()
