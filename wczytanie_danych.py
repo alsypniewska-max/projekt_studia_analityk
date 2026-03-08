@@ -22,6 +22,7 @@ current_df = None
 
 def parse_pressure(value):
     """Parsuje ciśnienie np. '100/40' -> (100, 40), None jeśli brak."""
+    #nie uzywam tej funckji nigdzie, ale zostawiam ja. nie uzywam bo zaczelam robic inne dane.
     if pd.isna(value):
         return None, None
     match = re.match(r'(\d+)/(\d+)', str(value))
@@ -45,14 +46,14 @@ def import_csv():
 
     print(f"Wybrano plik CSV: {current_df.shape}")
 
-    # Filtry odświeżymy z poziomu MainWindow (poniżej).
+    # Filtry odświeżymy z poziomu MainWindow
 
 def import_sql():
     """
     Pusta funkcja do importu z bazy SQL.
     Zaimplementuj np. sqlite3.connect() i pd.read_sql().
     """
-    pass  # Dodaj tu kod importu SQL
+    pass  # Tu kiedyś będzie kod importu
 
 def zastosuj_filtry(df, widgets):
     filtered_df = df.copy()
@@ -90,7 +91,7 @@ def zastosuj_filtry(df, widgets):
 
             print(f"Filtr '{col}': = '{val}'")
 
-    # Filtr NORMY (zastąp cały blok if widgets.chk_norma.isChecked():)
+    # Filtr NORMY
     if widgets.chk_norma.isChecked():
         min_norm = widgets.spin_norma_min.value()
         max_norm = widgets.spin_norma_max.value()
@@ -203,6 +204,7 @@ class MainWindow(QMainWindow):
         action_csv = menu.addAction("Import z CSV")
         action_csv.triggered.connect(self.import_csv_and_refresh)
 
+        # teraz specjalnie odwołanie to tej smiesznej funkcji :)
         action_sql = menu.addAction("Import z bazy SQL")
         action_sql.triggered.connect(self.show_sql_unavailable_dialog)
 
@@ -238,7 +240,7 @@ class MainWindow(QMainWindow):
 
         # Widget NORMY
         self.norma_widget = QWidget()
-        norma_layout = QVBoxLayout(self.norma_widget)  # ZMIANA: QVBoxLayout zamiast QHBoxLayout
+        norma_layout = QVBoxLayout(self.norma_widget)  # ZMIANA: QVBoxLayout zamiast QHBoxLayout - inny układ widgetów vertical/horizontal
         norma_layout.setContentsMargins(5, 5, 5, 5)
         norma_layout.setSpacing(4)
 
@@ -291,14 +293,21 @@ class MainWindow(QMainWindow):
         wiz_layout.setContentsMargins(5, 5, 5, 5)
         wiz_layout.setSpacing(4)
 
-        # WIERSZ 1: Checkbox + Narysuj
+        # WIERSZ 1: etykieta + Narysuj
         wiz_row1 = QHBoxLayout()
-        self.chk_wizualizacja = QCheckBox("WIZUALIZACJA")
-        self.btn_wizualizuj = QPushButton("Narysuj")
-        self.btn_wizualizuj.clicked.connect(lambda: [self.log("Uruchamiam wizualizację"), self.run_visualization()])
-        wiz_row1.addWidget(self.chk_wizualizacja)
+
+        lbl_wiz = QLabel("WIZUALIZACJA")
+        lbl_wiz.setStyleSheet("font-weight: bold;")
+        wiz_row1.addWidget(lbl_wiz)
+
         wiz_row1.addStretch(1)
+
+        self.btn_wizualizuj = QPushButton("Narysuj")
+        self.btn_wizualizuj.clicked.connect(
+            lambda: [self.log("Uruchamiam wizualizację"), self.run_visualization()]
+        )
         wiz_row1.addWidget(self.btn_wizualizuj)
+
         wiz_layout.addLayout(wiz_row1)
 
         # WIERSZ 2: Typ wykresu
@@ -524,7 +533,7 @@ class MainWindow(QMainWindow):
 
         self.view_stack = QStackedWidget()
         self.view_stack.addWidget(self.table)  # index 0: dane
-        self.view_stack.setCurrentIndex(0)  # NOWE: start z tabelą
+        self.view_stack.setCurrentIndex(0)  #  start z tabelą
         self.view_stack.addWidget(self.stats_table)  # index 1: statystyka
 
         self.view_stack.setCurrentIndex(0)
@@ -748,7 +757,7 @@ class MainWindow(QMainWindow):
 
     def toggle_stats_bar(self):
         visible = not self.stats_bar.isVisible()
-        self.stats_bar.setVisible(visible)  # pokaż/ukryj pasek opcji [web:212]
+        self.stats_bar.setVisible(visible)  # pokaż/ukryj pasek opcji
         if visible:
             self.refresh_stats_controls()
 
@@ -847,6 +856,16 @@ class MainWindow(QMainWindow):
 
         return "; ".join(desc)
 
+    def get_filtered_df(self):
+        """Zwraca current_df po zastosowaniu filtrów, z zabezpieczeniem."""
+        global current_df
+        if current_df is None:
+            return None
+        try:
+            return zastosuj_filtry(current_df, self).copy()
+        except Exception:
+            return current_df.copy()
+
     def render_df_to_table(self, df, table):
         table.setRowCount(len(df))
         table.setColumnCount(len(df.columns))
@@ -901,7 +920,7 @@ class MainWindow(QMainWindow):
         self.update_stats_view()
 
         # Przełącz widok na tabelę statystyk
-        self.view_stack.setCurrentIndex(1)  # pokaż statystykę [web:207]
+        self.view_stack.setCurrentIndex(1)  # pokaż statystykę
 
     def export_stats_to_csv(self):
         """Eksport statystyk z metadanymi (Parametr/Wartość w wierszach)"""
@@ -1039,15 +1058,27 @@ class MainWindow(QMainWindow):
 
         try:
             with PdfPages(file_path) as pdf:
-                # STRONA 1: metadane + tabela statystyk jako tabela matplotlib
+                # STRONA 1: statystyki
                 fig1 = self._create_stats_report_figure()
                 pdf.savefig(fig1, bbox_inches='tight')
                 plt.close(fig1)
 
-                # STRONA 2: wykres (jeśli istnieje)
+                # STRONA 2: aktualny wykres z GUI (jeśli jest)
                 fig_chart = getattr(self, "current_figure", None)
                 if fig_chart is not None:
                     pdf.savefig(fig_chart, bbox_inches='tight')
+
+                # STRONA 3: histogram WARTOŚĆ (jeśli możliwy)
+                fig_hist = self._create_hist_figure()
+                if fig_hist is not None:
+                    pdf.savefig(fig_hist, bbox_inches='tight')
+                    plt.close(fig_hist)
+
+                # STRONA 4: słupkowy GRUPA vs WARTOŚĆ (średnia)
+                fig_bar = self._create_bar_figure()
+                if fig_bar is not None:
+                    pdf.savefig(fig_bar, bbox_inches='tight')
+                    plt.close(fig_bar)
 
                 # metadane PDF
                 info = pdf.infodict()
@@ -1144,15 +1175,69 @@ class MainWindow(QMainWindow):
 
         return fig
 
+    def _create_hist_figure(self):
+        """Histogram dla kolumny WARTOŚĆ (cmb_value) na danych po filtrach."""
+        df = self.get_filtered_df()
+        if df is None or df.empty:
+            return None
+
+        value_col = self.cmb_value.currentText()
+        if not value_col or value_col not in df.columns:
+            return None
+
+        s = pd.to_numeric(df[value_col], errors="coerce").dropna()
+        if s.empty:
+            return None
+
+        fig, ax = plt.subplots(figsize=(11.69, 8.27))  # A4 poziomo
+        ax.hist(s, bins=20, alpha=0.75, edgecolor="black")
+        ax.set_title(f"Histogram: {value_col}", fontsize=14, weight="bold")
+        ax.set_xlabel(value_col)
+        ax.set_ylabel("Częstość")
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        return fig
+
+    def _create_bar_figure(self):
+        """Słupkowy: GRUPA (get_selected_group_col) vs WARTOŚĆ."""
+        df = self.get_filtered_df()
+        if df is None or df.empty:
+            return None
+
+        group_col = self.get_selected_group_col()
+        value_col = self.cmb_value.currentText()
+
+        if not group_col or not value_col:
+            return None
+        if group_col not in df.columns or value_col not in df.columns:
+            return None
+
+        s_val = pd.to_numeric(df[value_col], errors="coerce")
+        if s_val.notna().sum() == 0:
+            return None
+
+        grp = df.groupby(group_col, dropna=False)[value_col].mean().sort_values(ascending=False)
+        if grp.empty:
+            return None
+
+        fig, ax = plt.subplots(figsize=(11.69, 8.27))
+        grp.plot(kind="bar", ax=ax)
+        ax.set_title(f"{value_col} wg {group_col} (średnia)", fontsize=14, weight="bold")
+        ax.set_xlabel(group_col)
+        ax.set_ylabel(value_col)
+        ax.grid(True, axis="y", alpha=0.3)
+        plt.tight_layout()
+        return fig
+
     def toggle_stats_mode(self, active: bool):
         # aktywny tryb: pokaż pasek, odśwież kontrolki, przełącz widok na statystyki
-        self.stats_bar.setVisible(active)  # show/hide przez setVisible [web:161]
+        self.stats_bar.setVisible(active)  # show/hide przez setVisible
         if active:
             self.refresh_stats_controls()
             # nie licz od razu; dopiero po kliknięciu "Analizuj"
-            self.view_stack.setCurrentIndex(1)  # statystyka [web:207]
+            self.view_stack.setCurrentIndex(1)
         else:
-            self.view_stack.setCurrentIndex(0)  # dane [web:207]
+            self.view_stack.setCurrentIndex(0)
 
     def toggle_norma_filter(self, state):
         """Bezpieczna wersja z ochroną przed usuniętym layoutem"""
@@ -1504,7 +1589,7 @@ class MainWindow(QMainWindow):
         line = f"[{ts}] {message}"
         self.log_widget.appendPlainText(line)
         self.log_widget.verticalScrollBar().setValue(self.log_widget.verticalScrollBar().maximum())
-        # echo w status bar (jeśli chcesz)
+
         self.statusBar().showMessage(message, 3000)
 
     def show_sql_unavailable_dialog(self):
