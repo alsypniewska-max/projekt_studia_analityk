@@ -43,7 +43,6 @@ def import_csv():
 
     print(f"Wybrano plik CSV: {current_df.shape}")
 
-    # WAŻNE: nie wywołuj tu window.create_dynamic_filters()
     # Filtry odświeżymy z poziomu MainWindow (poniżej).
 
 def import_sql():
@@ -83,7 +82,7 @@ def zastosuj_filtry(df, widgets):
             if val == "":
                 continue
 
-            # porównuj jako string, żeby było stabilnie
+            # porównanie jako string - stabilizacja
             mask = filtered_df[col].astype(str) == str(val)
             filtered_df = filtered_df[mask]
 
@@ -173,7 +172,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.statusBar().deleteLater()
 
-        # NOWE: LOG WIDGET (tu wklej)
+        # LOG WIDGET
         self.log_widget = QPlainTextEdit(self)
         self.log_widget.setReadOnly(True)
         self.log_widget.setMaximumHeight(120)
@@ -186,7 +185,7 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # NOWE: Główny VBOX z splitterem
+        # Główny VBOX z splitterem
         main_layout = QVBoxLayout(central_widget)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -235,7 +234,7 @@ class MainWindow(QMainWindow):
         )
         left_layout.addWidget(self.btn_filtruj)
 
-        # Widget NORMY - 3 wiersze (bardziej czytelny)
+        # Widget NORMY
         self.norma_widget = QWidget()
         norma_layout = QVBoxLayout(self.norma_widget)  # ZMIANA: QVBoxLayout zamiast QHBoxLayout
         norma_layout.setContentsMargins(5, 5, 5, 5)
@@ -284,7 +283,7 @@ class MainWindow(QMainWindow):
 
         left_layout.addWidget(self.norma_widget)
 
-        # Widget WIZUALIZACJA - POD NORMA (wklej CAŁOŚĆ)
+        # Widget WIZUALIZACJA
         self.wizualizacja_widget = QWidget()
         wiz_layout = QVBoxLayout(self.wizualizacja_widget)
         wiz_layout.setContentsMargins(5, 5, 5, 5)
@@ -330,7 +329,7 @@ class MainWindow(QMainWindow):
         wiz_row4.addStretch(1)
         wiz_layout.addLayout(wiz_row4)
 
-        # WIERSZ: Porównanie oczu (DODAJ TUTAJ)
+        # WIERSZ: Porównanie oczu
         eyes_row = QHBoxLayout()
         eyes_row.addWidget(QLabel("Lewe oko:"))
         self.cmb_eye_left = QComboBox()
@@ -351,7 +350,7 @@ class MainWindow(QMainWindow):
         self.chk_compare_eyes.toggled.connect(self.cmb_eye_left.setEnabled)
         self.chk_compare_eyes.toggled.connect(self.cmb_eye_right.setEnabled)
 
-        # nowe do wykresów
+        # opcje do wykresów
         opt_row = QHBoxLayout()
         opt_row.addWidget(QLabel("Agregacja:"))
         self.cmb_wiz_agg = QComboBox()
@@ -402,7 +401,7 @@ class MainWindow(QMainWindow):
 
         left_layout.addWidget(self.wizualizacja_widget)
 
-        # ScrollArea na filtry (już masz) - DODAJ filtr NORMY na końcu:
+        # ScrollArea na filtry - filtr NORMY
         self.norma_filter_widget = QWidget()
         self.norma_filter_layout = QHBoxLayout(self.norma_filter_widget)
         self.chk_norma_ok = QCheckBox("w normie")
@@ -424,9 +423,25 @@ class MainWindow(QMainWindow):
         """)
         left_layout.addWidget(self.btn_statystyka)
 
-        # WAŻNE: dokończenie layoutu lewej kolumny
+        # Przyciski eksportu RAPORTU (pod Statystyką)
+        export_layout = QHBoxLayout()
+        export_layout.setSpacing(6)
+
+        self.btn_export_csv = QPushButton("📊 CSV")
+        self.btn_export_csv.clicked.connect(self.export_stats_to_csv)
+        self.btn_export_csv.setMaximumWidth(80)
+        export_layout.addWidget(self.btn_export_csv)
+
+        #self.btn_export_pdf = QPushButton("📄 PDF")
+        #self.btn_export_pdf.clicked.connect(self.export_report_to_pdf)
+        #self.btn_export_pdf.setMaximumWidth(80)
+        #export_layout.addWidget(self.btn_export_pdf)
+
+        left_layout.addLayout(export_layout)
+
+        # dokończenie layoutu lewej kolumny
         left_layout.addStretch()
-        self.splitter.addWidget(left_widget)  # NOWE: lewa do splittera
+        self.splitter.addWidget(left_widget)  # lewa do splittera
 
         # PRAWY: Kontener (pasek statystyk nad tabelą + stos widoków)
         right_widget = QWidget()
@@ -542,7 +557,7 @@ class MainWindow(QMainWindow):
         self.chart_toolbar.addWidget(self.btn_save_pdf)
         self.chart_toolbar.addStretch(1)
 
-        # kontener na canvas (TU będzie FigureCanvas, to tylko to będziemy czyścić)
+        # kontener na canvas (TU będzie FigureCanvas, tylko to będziemy czyścić)
         self.chart_canvas_container = QWidget()
         self.chart_canvas_layout = QVBoxLayout(self.chart_canvas_container)
         self.chart_layout.addWidget(self.chart_canvas_container)
@@ -823,6 +838,58 @@ class MainWindow(QMainWindow):
 
         # Przełącz widok na tabelę statystyk
         self.view_stack.setCurrentIndex(1)  # pokaż statystykę [web:207]
+
+    def export_stats_to_csv(self):
+        """Eksport widocznych statystyk do CSV"""
+        global current_df
+
+        if current_df is None:
+            self.log("✗ Brak danych do eksportu")
+            return
+
+        # Sprawdź czy jesteś w trybie statystyk
+        if not self.btn_statystyka.isChecked():
+            self.log("✗ Włącz tryb Statystyka przed eksportem")
+            return
+
+        # Pobierz dane z tabeli statystyk
+        rows = self.stats_table.rowCount()
+        cols = self.stats_table.columnCount()
+
+        if rows == 0:
+            self.log("✗ Brak statystyk do eksportu - kliknij Analizuj")
+            return
+
+        # Zbierz nagłówki i dane z tabeli
+        headers = [self.stats_table.horizontalHeaderItem(c).text()
+                   for c in range(cols)]
+
+        data = []
+        for r in range(rows):
+            row_data = []
+            for c in range(cols):
+                item = self.stats_table.item(r, c)
+                row_data.append(item.text() if item else "")
+            data.append(row_data)
+
+        # Konwersja do DataFrame i zapis
+        df_stats = pd.DataFrame(data, columns=headers)
+
+        # Dialog zapisu
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Zapisz statystyki do CSV",
+            "raport_statystyki.csv",
+            "CSV files (*.csv)"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            df_stats.to_csv(file_path, index=False, encoding='utf-8-sig')
+            self.log(f"✓ Statystyki zapisane: {file_path}")
+        except Exception as e:
+            self.log(f"✗ Błąd zapisu CSV: {e}")
 
     def toggle_stats_mode(self, active: bool):
         # aktywny tryb: pokaż pasek, odśwież kontrolki, przełącz widok na statystyki
