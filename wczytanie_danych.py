@@ -10,9 +10,11 @@ from PyQt6.QtCore import (QTimer, Qt)
 from PyQt6.QtGui import QPixmap
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_pdf import PdfPages #esporty pdf
 from matplotlib.figure import Figure
 from datetime import datetime
 import pandas as pd
+import openpyxl #eskporty csv
 import numpy as np
 
 current_file_path = None
@@ -432,10 +434,10 @@ class MainWindow(QMainWindow):
         self.btn_export_csv.setMaximumWidth(80)
         export_layout.addWidget(self.btn_export_csv)
 
-        #self.btn_export_pdf = QPushButton("📄 PDF")
+        self.btn_export_pdf = QPushButton("📄 PDF")
         #self.btn_export_pdf.clicked.connect(self.export_report_to_pdf)
-        #self.btn_export_pdf.setMaximumWidth(80)
-        #export_layout.addWidget(self.btn_export_pdf)
+        self.btn_export_pdf.setMaximumWidth(80)
+        export_layout.addWidget(self.btn_export_pdf)
 
         left_layout.addLayout(export_layout)
 
@@ -840,56 +842,95 @@ class MainWindow(QMainWindow):
         self.view_stack.setCurrentIndex(1)  # pokaż statystykę [web:207]
 
     def export_stats_to_csv(self):
-        """Eksport widocznych statystyk do CSV"""
+        """Eksport statystyk z metadanymi (Parametr/Wartość w wierszach)"""
         global current_df
 
         if current_df is None:
             self.log("✗ Brak danych do eksportu")
             return
 
-        # Sprawdź czy jesteś w trybie statystyk
         if not self.btn_statystyka.isChecked():
             self.log("✗ Włącz tryb Statystyka przed eksportem")
             return
 
-        # Pobierz dane z tabeli statystyk
         rows = self.stats_table.rowCount()
-        cols = self.stats_table.columnCount()
-
         if rows == 0:
             self.log("✗ Brak statystyk do eksportu - kliknij Analizuj")
             return
 
-        # Zbierz nagłówki i dane z tabeli
-        headers = [self.stats_table.horizontalHeaderItem(c).text()
-                   for c in range(cols)]
+        group_col = self.get_selected_group_col()
+        value_col = self.cmb_value.currentText()
 
+        # 1. Metadane jako wiersze: Parametr, Wartość
+        agg_names = []
+        if self.chk_mean.isChecked():
+            agg_names.append("Średnia")
+        if self.chk_median.isChecked():
+            agg_names.append("Mediana")
+        if self.chk_min.isChecked():
+            agg_names.append("Minimum")
+        if self.chk_max.isChecked():
+            agg_names.append("Maximum")
+        agg_text = ", ".join(agg_names) if agg_names else "Brak"
+
+        meta_rows = [
+            ("RAPORT", "STATYSTYKA"),
+            ("Data", pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')),
+            ("Plik", current_file_path.split('/')[-1]),
+            ("Kolumna GRUPA", group_col or "brak"),
+            ("Kolumna WARTOŚĆ", value_col or "brak"),
+            ("Wierszy po filtrach", str(len(zastosuj_filtry(current_df, self)))),
+            ("Wybrane agregacje", agg_text),
+        ]
+
+        # 2. Dane statystyczne z tabeli → DataFrame
+        headers = [self.stats_table.horizontalHeaderItem(c).text()
+                   for c in range(self.stats_table.columnCount())]
         data = []
         for r in range(rows):
             row_data = []
-            for c in range(cols):
+            for c in range(self.stats_table.columnCount()):
                 item = self.stats_table.item(r, c)
-                row_data.append(item.text() if item else "")
+                text = item.text() if item else ""
+                # próbujemy zaokrąglić liczby
+                try:
+                    val = float(text.replace(",", "."))
+                    text = f"{val:.2f}"
+                except:
+                    pass
+                row_data.append(text)
             data.append(row_data)
 
-        # Konwersja do DataFrame i zapis
         df_stats = pd.DataFrame(data, columns=headers)
 
-        # Dialog zapisu
+        # 3. Zapis: metadane (2 kolumny), pusta linia, nagłówki + statystyki
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Zapisz statystyki do CSV",
-            "raport_statystyki.csv",
+            self, "Zapisz raport statystyk",
+            f"raport_{group_col}_{value_col}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
             "CSV files (*.csv)"
         )
-
         if not file_path:
             return
 
         try:
-            df_stats.to_csv(file_path, index=False, encoding='utf-8-sig')
-            self.log(f"✓ Statystyki zapisane: {file_path}")
+            with open(file_path, 'w', encoding='utf-8-sig', newline='') as f:
+                # Metadane
+                f.write("Parametr,Wartość\n")
+                for param, value in meta_rows:
+                    # Jeśli w wartości są przecinki, otocz w cudzysłów
+                    if "," in value:
+                        value = f"\"{value}\""
+                    f.write(f"{param},{value}\n")
+
+                # separator
+                f.write("\nSTATYSTYKI\n")
+
+                # Tabela statystyk
+                df_stats.to_csv(f, index=False)
+
+            self.log(f"✓ Raport CSV zapisany: {file_path}")
         except Exception as e:
-            self.log(f"✗ Błąd zapisu CSV: {e}")
+            self.log(f"✗ Błąd zapisu: {e}")
 
     def toggle_stats_mode(self, active: bool):
         # aktywny tryb: pokaż pasek, odśwież kontrolki, przełącz widok na statystyki
@@ -1170,8 +1211,11 @@ class MainWindow(QMainWindow):
         ax.grid(True, alpha=0.25)
         plt.tight_layout()
 
-        # zapamiętaj wykres do eksportu
-        self.last_fig = fig
+        # zapamiętaj wykres do eksportu PDF (zamknij poprzedni żeby nie marnować pamięci)
+        old_fig = getattr(self, 'current_figure', None)
+        if old_fig is not None:
+            plt.close(old_fig)
+        self.current_figure = fig
 
         # wyczyść poprzedni canvas (NIE ruszamy paska przycisków)
         while self.chart_canvas_layout.count():
@@ -1185,7 +1229,7 @@ class MainWindow(QMainWindow):
 
         self.view_stack.setVisible(False)
         self.chart_widget.setVisible(True)
-        self.splitter.setSizes([350, 1000])  # NOWE: zostaw lewą 350, prawa max
+        self.splitter.setSizes([350, 1000])
         self.log("✓ Wykres narysowany – użyj przycisków eksportu")
 
         self.btn_back_from_chart.setVisible(True)
