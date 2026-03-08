@@ -435,7 +435,7 @@ class MainWindow(QMainWindow):
         export_layout.addWidget(self.btn_export_csv)
 
         self.btn_export_pdf = QPushButton("📄 PDF")
-        #self.btn_export_pdf.clicked.connect(self.export_report_to_pdf)
+        self.btn_export_pdf.clicked.connect(self.export_report_to_pdf)
         self.btn_export_pdf.setMaximumWidth(80)
         export_layout.addWidget(self.btn_export_pdf)
 
@@ -785,6 +785,41 @@ class MainWindow(QMainWindow):
         selected = [col for col, chk in self.stats_cat_widgets.items() if chk.isChecked()]
         return selected[0] if selected else None
 
+    def get_filters_description(self) -> str:
+        """Opis filtrów na podstawie różnicy między current_df a df_po_filtrach."""
+        global current_df
+        if current_df is None:
+            return "Brak (current_df = None)"
+
+        try:
+            df_filt = zastosuj_filtry(current_df, self)
+        except Exception:
+            return "Nie udało się odczytać filtrów"
+
+        if len(df_filt) == len(current_df):
+            return "Brak (wszystkie dane)"
+
+        desc = []
+
+        # Przykład: jeśli masz kolumnę 'gatunek' i po filtrze są tylko 1–2 wartości
+        for col in df_filt.columns:
+            unique_all = set(map(str, current_df[col].dropna().unique()))
+            unique_filt = set(map(str, df_filt[col].dropna().unique()))
+            if unique_filt != unique_all:
+                if len(unique_filt) == 1:
+                    val = next(iter(unique_filt))
+                    desc.append(f"{col} = {val}")
+                elif 1 < len(unique_filt) <= 4:
+                    vals = ", ".join(sorted(unique_filt))
+                    desc.append(f"{col} ∈ {{{vals}}}")
+                else:
+                    desc.append(f"{col}: ograniczony zbiór wartości ({len(unique_filt)} z {len(unique_all)})")
+
+        if not desc:
+            return "Filtry aktywne (zmieniona liczba wierszy), ale niejednoznaczne po wartościach"
+
+        return "; ".join(desc)
+
     def render_df_to_table(self, df, table):
         table.setRowCount(len(df))
         table.setColumnCount(len(df.columns))
@@ -880,6 +915,7 @@ class MainWindow(QMainWindow):
             ("Kolumna GRUPA", group_col or "brak"),
             ("Kolumna WARTOŚĆ", value_col or "brak"),
             ("Wierszy po filtrach", str(len(zastosuj_filtry(current_df, self)))),
+            ("Zastosowane filtry", self.get_filters_description()),
             ("Wybrane agregacje", agg_text),
         ]
 
@@ -919,18 +955,147 @@ class MainWindow(QMainWindow):
                 for param, value in meta_rows:
                     # Jeśli w wartości są przecinki, otocz w cudzysłów
                     if "," in value:
-                        value = f"\"{value}\""
+                        value = f'"{value}"'
                     f.write(f"{param},{value}\n")
 
-                # separator
-                f.write("\nSTATYSTYKI\n")
+                # separator (pusta linia, potem nagłówek sekcji)
+                f.write("\n")
+                f.write("STATYSTYKI\n")
 
-                # Tabela statystyk
-                df_stats.to_csv(f, index=False)
+                # Tabela statystyk (z własnymi nagłówkami i separacją)
+                df_stats.to_csv(f, index=False, sep=',', lineterminator='\n')
 
             self.log(f"✓ Raport CSV zapisany: {file_path}")
         except Exception as e:
             self.log(f"✗ Błąd zapisu: {e}")
+
+    def export_report_to_pdf(self):
+        """Eksport raportu: metadane + statystyki + ostatni wykres do PDF"""
+        global current_df
+
+        if current_df is None:
+            self.log("✗ Brak danych do eksportu")
+            return
+
+        if not self.btn_statystyka.isChecked():
+            self.log("✗ Włącz tryb Statystyka przed eksportem")
+            return
+
+        # sprawdź, czy są statystyki
+        rows = self.stats_table.rowCount()
+        if rows == 0:
+            self.log("✗ Brak statystyk do eksportu - kliknij Analizuj")
+            return
+
+        # dialog zapisu
+        group_col = self.get_selected_group_col()
+        value_col = self.cmb_value.currentText()
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Zapisz raport PDF",
+            f"raport_{group_col}_{value_col}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.pdf",
+            "PDF files (*.pdf)"
+        )
+        if not file_path:
+            return
+
+        try:
+            with PdfPages(file_path) as pdf:
+                # STRONA 1: metadane + tabela statystyk jako tabela matplotlib
+                fig1 = self._create_stats_report_figure()
+                pdf.savefig(fig1, bbox_inches='tight')
+                plt.close(fig1)
+
+                # STRONA 2: wykres (jeśli istnieje)
+                fig_chart = getattr(self, "current_figure", None)
+                if fig_chart is not None:
+                    pdf.savefig(fig_chart, bbox_inches='tight')
+
+                # metadane PDF
+                info = pdf.infodict()
+                info["Title"] = "Raport statystyczny"
+                info["Author"] = "Aplikacja analityczna"
+                info["Subject"] = "Statystyki i wizualizacje"
+                info["CreationDate"] = pd.Timestamp.now()
+
+            self.log(f"✓ Raport PDF zapisany: {file_path}")
+        except Exception as e:
+            self.log(f"✗ Błąd zapisu PDF: {e}")
+
+    def _create_stats_report_figure(self):
+        """Tworzy figurę z metadanymi i tabelą statystyk"""
+        # metadane (jak w CSV)
+        group_col = self.get_selected_group_col()
+        value_col = self.cmb_value.currentText()
+
+        agg_names = []
+        if self.chk_mean.isChecked():
+            agg_names.append("Średnia")
+        if self.chk_median.isChecked():
+            agg_names.append("Mediana")
+        if self.chk_min.isChecked():
+            agg_names.append("Minimum")
+        if self.chk_max.isChecked():
+            agg_names.append("Maximum")
+        agg_text = ", ".join(agg_names) if agg_names else "Brak"
+
+        meta_lines = [
+            f"RAPORT STATYSTYCZNY",
+            f"Data: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}",
+            f"Plik: {current_file_path.split('/')[-1]}",
+            f"GRUPA: {group_col or 'brak'}",
+            f"WARTOŚĆ: {value_col or 'brak'}",
+            f"Wierszy po filtrach: {len(zastosuj_filtry(current_df, self))}",
+            f"Filtry: {self.get_filters_description()}",
+            f"Wybrane agregacje: {agg_text}",
+            ""
+        ]
+
+        # dane z tabeli statystyk
+        rows = self.stats_table.rowCount()
+        cols = self.stats_table.columnCount()
+        headers = [self.stats_table.horizontalHeaderItem(c).text() for c in range(cols)]
+
+        data = []
+        for r in range(rows):
+            row_data = []
+            for c in range(cols):
+                item = self.stats_table.item(r, c)
+                text = item.text() if item else ""
+                try:
+                    val = float(text.replace(",", "."))
+                    text = f"{val:.2f}"
+                except:
+                    pass
+                row_data.append(text)
+            data.append(row_data)
+
+        # rysowanie
+        fig, ax = plt.subplots(figsize=(11.69, 8.27))  # A4 poziomo
+        ax.axis("off")
+
+        # meta tekst u góry
+        y = 0.98
+        for line in meta_lines:
+            ax.text(0.01, y, line, transform=ax.transAxes,
+                    fontsize=10, va="top", ha="left")
+            y -= 0.035
+
+        # tabela statystyk pod metadanymi
+        table = ax.table(
+            cellText=data,
+            colLabels=headers,
+            cellLoc="center",
+            loc="bottom"
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(8)
+        table.scale(1, 1.5)
+
+        # nagłówek
+        ax.set_title("Statystyki opisowe", fontsize=14, weight="bold", pad=10)
+
+        return fig
 
     def toggle_stats_mode(self, active: bool):
         # aktywny tryb: pokaż pasek, odśwież kontrolki, przełącz widok na statystyki
