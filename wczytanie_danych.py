@@ -182,7 +182,7 @@ class MainWindow(QMainWindow):
         self.log_widget.setStyleSheet("font-family: 'Courier New', Consolas, monospace; font-size: 10pt;")
         self.log_widget.appendPlainText("[START] Aplikacja uruchomiona")
 
-        self.setWindowTitle("Wczytaj dane - Filtry i podgląd")
+        self.setWindowTitle("VetStats")
         self.setMinimumSize(1400, 800)
 
         central_widget = QWidget()
