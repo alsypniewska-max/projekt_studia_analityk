@@ -1058,23 +1058,28 @@ class MainWindow(QMainWindow):
 
         try:
             with PdfPages(file_path) as pdf:
-                # STRONA 1: statystyki
+                # STRONA 1: opis + metadane + filtry (BEZ TABELI)
                 fig1 = self._create_stats_report_figure()
                 pdf.savefig(fig1, bbox_inches='tight')
                 plt.close(fig1)
 
-                # STRONA 2: aktualny wykres z GUI (jeśli jest)
+                # STRONA 2: sama tabela statystyk (NOWA)
+                fig_table = self._create_stats_table_figure()
+                pdf.savefig(fig_table, bbox_inches='tight')
+                plt.close(fig_table)
+
+                # STRONA 3: aktualny wykres z GUI (jeśli jest)
                 fig_chart = getattr(self, "current_figure", None)
                 if fig_chart is not None:
                     pdf.savefig(fig_chart, bbox_inches='tight')
 
-                # STRONA 3: histogram WARTOŚĆ (jeśli możliwy)
+                # STRONA 4: histogram WARTOŚĆ (jeśli możliwy)
                 fig_hist = self._create_hist_figure()
                 if fig_hist is not None:
                     pdf.savefig(fig_hist, bbox_inches='tight')
                     plt.close(fig_hist)
 
-                # STRONA 4: słupkowy GRUPA vs WARTOŚĆ (średnia)
+                # STRONA 5: słupkowy GRUPA vs WARTOŚĆ (średnia)
                 fig_bar = self._create_bar_figure()
                 if fig_bar is not None:
                     pdf.savefig(fig_bar, bbox_inches='tight')
@@ -1092,44 +1097,119 @@ class MainWindow(QMainWindow):
             self.log(f"✗ Błąd zapisu PDF: {e}")
 
     def _create_stats_report_figure(self):
-        """Tworzy figurę z metadanymi i tabelą statystyk"""
-        # metadane (jak w CSV)
+        """Tworzy figurę z metadanymi i opisem (BEZ TABELI)"""
+        import textwrap
+
         group_col = self.get_selected_group_col()
         value_col = self.cmb_value.currentText()
 
         agg_names = []
         if self.chk_mean.isChecked():
-            agg_names.append("Średnia")
+            agg_names.append("średnia")
         if self.chk_median.isChecked():
-            agg_names.append("Mediana")
+            agg_names.append("mediana")
         if self.chk_min.isChecked():
-            agg_names.append("Minimum")
+            agg_names.append("minimum")
         if self.chk_max.isChecked():
-            agg_names.append("Maximum")
-        agg_text = ", ".join(agg_names) if agg_names else "Brak"
+            agg_names.append("maksimum")
+        agg_text = ", ".join(agg_names) if agg_names else "brak"
 
         filters_text = self.get_filters_description()
+        filtered_df = zastosuj_filtry(current_df, self)
+        n_records = len(filtered_df)
+
+        fig, ax = plt.subplots(figsize=(8.27, 11.69))
+        ax.axis("off")
+
+        title = "RAPORT STATYSTYCZNY"
+        desc = self._build_report_description_text(
+            n_records=n_records,
+            group_col=group_col,
+            value_col=value_col,
+            agg_text=agg_text,
+            filters_text=filters_text
+        )
+
+        desc_lines = textwrap.wrap(desc, width=85)
+
         filter_lines = []
         if filters_text.startswith("Brak"):
-            filter_lines = ["Filtry: Brak (wszystkie dane)"]
+            filter_lines.append("Filtry: brak (użyto wszystkich danych).")
         else:
-            parts = filters_text.split("; ")
             filter_lines.append("Filtry:")
-            for p in parts:
+            parts = filters_text.split("; ")
+            for p in parts:  # ZMIANA: wszystkie filtry, nie [:4]
                 filter_lines.append(f"  - {p}")
 
         meta_lines = [
-                         f"RAPORT STATYSTYCZNY",
-                         f"Data: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}",
-                         f"Plik: {current_file_path.split('/')[-1]}",
-                         f"GRUPA: {group_col or 'brak'}",
-                         f"WARTOŚĆ: {value_col or 'brak'}",
-                         f"Wierszy po filtrach: {len(zastosuj_filtry(current_df, self))}",
-                         f"Wybrane agregacje: {agg_text}",
-                         ""
-                     ] + filter_lines + [""]
+            f"Data: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}",
+            f"Plik: {current_file_path.split('/')[-1]}",
+            f"Grupa: {group_col or 'brak'}",
+            f"Wartość: {value_col or 'brak'}",
+            f"Wierszy po filtrach: {n_records}",
+            f"Agregacje: {agg_text}",
+        ]
 
-        # dane z tabeli statystyk
+        y = 0.97
+        ax.text(
+            0.5, y, title,
+            transform=ax.transAxes,
+            fontsize=16,
+            fontweight="bold",
+            ha="center",
+            va="top"
+        )
+        y -= 0.05
+
+        ax.text(
+            0.05, y, "Opis raportu",
+            transform=ax.transAxes,
+            fontsize=11,
+            fontweight="bold",
+            ha="left",
+            va="top"
+        )
+        y -= 0.03
+
+        for line in desc_lines:
+            ax.text(
+                0.05, y, line,
+                transform=ax.transAxes,
+                fontsize=9.5,
+                ha="left",
+                va="top"
+            )
+            y -= 0.022
+
+        y -= 0.015
+
+        for line in meta_lines:
+            ax.text(
+                0.05, y, line,
+                transform=ax.transAxes,
+                fontsize=9,
+                ha="left",
+                va="top"
+            )
+            y -= 0.022
+
+        y -= 0.01
+
+        for line in filter_lines:
+            ax.text(
+                0.05, y, line,
+                transform=ax.transAxes,
+                fontsize=9,
+                ha="left",
+                va="top"
+            )
+            y -= 0.022
+
+
+        return fig
+
+    def _create_stats_table_figure(self):
+        """Tworzy osobną stronę PDF tylko z tabelą statystyk"""
         rows = self.stats_table.rowCount()
         cols = self.stats_table.columnCount()
         headers = [self.stats_table.horizontalHeaderItem(c).text() for c in range(cols)]
@@ -1148,32 +1228,52 @@ class MainWindow(QMainWindow):
                 row_data.append(text)
             data.append(row_data)
 
-        # rysowanie
-        fig, ax = plt.subplots(figsize=(11.69, 8.27))  # A4 poziomo
+        fig, ax = plt.subplots(figsize=(8.27, 11.69))
         ax.axis("off")
 
-        # meta tekst u góry
-        y = 0.98
-        for line in meta_lines:
-            ax.text(0.01, y, line, transform=ax.transAxes,
-                    fontsize=10, va="top", ha="left")
-            y -= 0.035
+        ax.text(
+            0.5, 0.97, "TABELA STATYSTYK",
+            transform=ax.transAxes,
+            fontsize=16,
+            fontweight="bold",
+            ha="center",
+            va="top"
+        )
 
-        # tabela statystyk pod metadanymi
         table = ax.table(
             cellText=data,
             colLabels=headers,
             cellLoc="center",
-            loc="bottom"
+            bbox=[0.02, 0.05, 0.96, 0.88],
+            colWidths=[0.40, 0.15, 0.15, 0.15, 0.15]
         )
         table.auto_set_font_size(False)
         table.set_fontsize(8)
-        table.scale(1, 1.5)
+        table.scale(1, 1.2)
 
-        # nagłówek
-        ax.set_title("Statystyki opisowe", fontsize=14, weight="bold", pad=10)
+        for (row, col), cell in table.get_celld().items():
+            if row == 0:
+                cell.set_text_props(weight="bold")
+            if col == 0:
+                cell.get_text().set_ha("left")
 
         return fig
+
+    def _build_report_description_text(self, n_records, group_col, value_col, agg_text, filters_text):
+        if filters_text.startswith("Brak"):
+            filters_sentence = "Nie zastosowano dodatkowych filtrów, więc analiza obejmuje wszystkie dostępne dane."
+        else:
+            filters_sentence = f"Do analizy zastosowano następujące filtry: {filters_text}."
+
+        text = (
+            f"Raport przedstawia wyniki analizy {n_records} rekordów danych. "
+            f"Dane zostały pogrupowane według kolumny '{group_col or 'brak'}', "
+            f"a analizowaną zmienną jest '{value_col or 'brak'}'. "
+            f"Obliczone statystyki obejmują: {agg_text}. "
+            f"{filters_sentence} "
+            f"Na kolejnych stronach raportu znajdują się wykres główny oraz dodatkowe wizualizacje danych."
+        )
+        return text
 
     def _create_hist_figure(self):
         """Histogram dla kolumny WARTOŚĆ (cmb_value) na danych po filtrach."""
