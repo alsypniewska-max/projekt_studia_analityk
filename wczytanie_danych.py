@@ -1,3 +1,4 @@
+import os
 import sys
 import re
 from PyQt6.QtWidgets import (
@@ -13,6 +14,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_pdf import PdfPages #esporty pdf
 from datetime import datetime
 import pandas as pd
+import textwrap
 
 current_file_path = None
 current_df = None
@@ -1095,7 +1097,7 @@ class MainWindow(QMainWindow):
 
     def _create_stats_report_figure(self):
         """Tworzy figurę z metadanymi i opisem (BEZ TABELI)"""
-        import textwrap
+
 
         group_col = self.get_selected_group_col()
         value_col = self.cmb_value.currentText()
@@ -1705,7 +1707,6 @@ class MainWindow(QMainWindow):
         img_label = QLabel()
         img_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        import os
         img_path = os.path.join(os.path.dirname(__file__), "importsql.jpg")
         pix = QPixmap(img_path)
 
