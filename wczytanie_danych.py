@@ -6,16 +6,13 @@ from PyQt6.QtWidgets import (
     QLabel, QCheckBox, QComboBox, QSpinBox, QStackedWidget, QFileDialog,
     QDoubleSpinBox, QLineEdit, QPlainTextEdit, QSplitter, QDialog
 )
-from PyQt6.QtCore import (QTimer, Qt)
+from PyQt6.QtCore import  Qt
 from PyQt6.QtGui import QPixmap
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_pdf import PdfPages #esporty pdf
-from matplotlib.figure import Figure
 from datetime import datetime
 import pandas as pd
-import openpyxl #eskporty csv
-import numpy as np
 
 current_file_path = None
 current_df = None
@@ -1684,7 +1681,6 @@ class MainWindow(QMainWindow):
 
     def log(self, message: str):
         """Log systemowy z timestamp"""
-        from datetime import datetime
         ts = datetime.now().strftime("%H:%M:%S")
         line = f"[{ts}] {message}"
         self.log_widget.appendPlainText(line)
